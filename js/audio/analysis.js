@@ -117,7 +117,111 @@ export async function analyze(channels, sampleRate, onProgress) {
       await nextTick();
     }
   }
-  return { env, centroid, energy, fps: sr / hop, lead: FFT_N / 2 / sr };
+  return { env, centroid, energy, fps: sr / hop, lead: FFT_N / 2 / sr, mono, sr, hop };
+}
+
+
+// ---------------------------------------------------------------------
+// Estimasi nada di sebuah onset: FFT panjang tepat setelah onset, lalu harmonic summation.
+// Hasilnya beberapa kandidat nada (MIDI) dengan skor, supaya pemanggil bisa memilih
+// yang paling nyambung dengan nada sebelumnya.
+
+const PITCH_N = 4096;
+const PITCH_LO = 43; // G2
+const PITCH_HI = 84; // C6
+let pitchWin = null;
+const pRe = new Float32Array(PITCH_N);
+const pIm = new Float32Array(PITCH_N);
+const pMag = new Float32Array(PITCH_N / 2);
+const pPrev = new Float32Array(PITCH_N / 2);
+
+function spectrumAt(mono, start, out) {
+  if (!pitchWin) {
+    pitchWin = new Float32Array(PITCH_N);
+    for (let i = 0; i < PITCH_N; i++) pitchWin[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (PITCH_N - 1));
+  }
+  for (let i = 0; i < PITCH_N; i++) {
+    const k = start + i;
+    pRe[i] = k >= 0 && k < mono.length ? mono[k] * pitchWin[i] : 0;
+    pIm[i] = 0;
+  }
+  fft(pRe, pIm);
+  for (let b = 0; b < PITCH_N / 2; b++) out[b] = Math.sqrt(Math.sqrt(pRe[b] * pRe[b] + pIm[b] * pIm[b]));
+}
+
+const PT = { sub: 0.3, cont: 0.7, hdec: 0.95, lo: 36, delay: 0.015, k: 5 };
+export function pitchCandidates(mono, sr, onsetSample) {
+  // spektrum sesudah onset dikurangi sebagian spektrum sebelum onset:
+  // yang tersisa didominasi nada yang baru masuk, bukan bass/pad yang masih menahan
+  spectrumAt(mono, onsetSample + Math.round(sr * PT.delay), pMag);
+  spectrumAt(mono, onsetSample - PITCH_N - Math.round(sr * 0.01), pPrev);
+  const half = PITCH_N / 2;
+  for (let b = 0; b < half; b++) pMag[b] = Math.max(0, pMag[b] - PT.sub * pPrev[b]);
+  const binHz = sr / PITCH_N;
+  const LO = PT.lo;
+  const steps = (PITCH_HI - LO) * 4 + 1;
+  const sal = new Float32Array(steps);
+  for (let s = 0; s < steps; s++) {
+    const f0 = 440 * Math.pow(2, (LO + s / 4 - 69) / 12);
+    let sum = 0;
+    let w = 1;
+    for (let h = 1; h <= 6; h++) {
+      const pos = (f0 * h) / binHz;
+      const i0 = Math.floor(pos);
+      if (i0 + 1 >= half) break;
+      sum += (pMag[i0] + (pMag[i0 + 1] - pMag[i0]) * (pos - i0)) * w;
+      w *= PT.hdec;
+    }
+    sal[s] = sum;
+  }
+  const peaks = [];
+  for (let s = 1; s < steps - 1; s++) {
+    if (sal[s] > sal[s - 1] && sal[s] >= sal[s + 1]) peaks.push({ pitch: LO + s / 4, score: sal[s] });
+  }
+  peaks.sort((a, b) => b.score - a.score);
+  return peaks.slice(0, PT.k || 5);
+}
+
+// Pilih satu nada per onset dengan Viterbi: gabungan skor kandidat dan kelancaran kontur,
+// supaya melodi tidak loncat oktaf atau pindah ke instrumen lain di tengah frase.
+export function trackPitches(mono, sr, onsetSamples) {
+  const n = onsetSamples.length;
+  const out = new Float32Array(n);
+  if (!n) return out;
+  const cands = [];
+  for (let i = 0; i < n; i++) {
+    let c = pitchCandidates(mono, sr, onsetSamples[i]);
+    if (!c.length) c = [{ pitch: 60, score: 1 }];
+    const top = c[0].score || 1;
+    cands.push(c.map((x) => ({ pitch: x.pitch, local: x.score / top, cost: 0, back: -1 })));
+  }
+  for (const c of cands[0]) c.cost = -c.local;
+  for (let i = 1; i < n; i++) {
+    const gapSec = (onsetSamples[i] - onsetSamples[i - 1]) / sr;
+    const w = gapSec > 1.5 ? 0 : PT.cont;
+    for (const c of cands[i]) {
+      let best = Infinity;
+      let back = 0;
+      cands[i - 1].forEach((p, k) => {
+        const v = p.cost + w * Math.min(1, Math.abs(c.pitch - p.pitch) / 19);
+        if (v < best) {
+          best = v;
+          back = k;
+        }
+      });
+      c.cost = best - c.local;
+      c.back = back;
+    }
+  }
+  let k = 0;
+  cands[n - 1].forEach((c, j) => {
+    if (c.cost < cands[n - 1][k].cost) k = j;
+  });
+  for (let i = n - 1; i >= 0; i--) {
+    out[i] = cands[i][k].pitch;
+    k = cands[i][k].back;
+  }
+  return out;
 }
 
 export function estimateTempo(env, fps) {
@@ -249,6 +353,13 @@ export async function autoChart(channels, sampleRate, meta = {}, onProgress) {
   song.offset = phase + an.lead + 0.004;
   song.autoCharted = true;
 
+  // nada tiap onset, dipakai untuk menentukan lane (nada tinggi = lane kanan)
+  const onsetSamples = onsets.map((o) => Math.round((o.frame / an.fps + an.lead) * an.sr));
+  const pitches = trackPitches(an.mono, an.sr, onsetSamples);
+  onsets.forEach((o, i) => {
+    o.pitch = pitches[i];
+  });
+
   // waktu onset -> tick (dibulatkan ke 1/16 kalau memang dekat)
   const cand = [];
   for (const o of onsets) {
@@ -260,7 +371,7 @@ export async function autoChart(channels, sampleRate, meta = {}, onProgress) {
     if (onGrid) beat = q;
     const sub = Math.round(beat * 4) % 4;
     const weight = o.strength * (onGrid ? (sub === 0 ? 1.5 : sub === 2 ? 1.2 : 1) : 0.85);
-    cand.push({ tick: Math.round(beat * res), time, frame: o.frame, pitch: an.centroid[o.frame] || 0, strength: o.strength, weight });
+    cand.push({ tick: Math.round(beat * res), time, frame: o.frame, pitch: o.pitch, strength: o.strength, weight });
   }
 
   const sp = [];

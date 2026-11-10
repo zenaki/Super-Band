@@ -8,6 +8,7 @@ export const audio = {
   music: null,
   sfx: null,
   unlocked: false,
+  musicLevel: 0.9,
 
   init() {
     if (this.ctx) return this.ctx;
@@ -57,7 +58,9 @@ export const audio = {
 
   setVolumes(music, sfx) {
     this.init();
-    this.music.gain.value = music;
+    this.musicLevel = music;
+    this.music.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.music.gain.setValueAtTime(music, this.ctx.currentTime);
     this.sfx.gain.value = sfx;
   },
 
@@ -173,8 +176,10 @@ export class Player {
       this.instGain.gain.cancelScheduledValues(ctx.currentTime);
       this.instGain.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.012);
     } else if (!this.instrument && muted) {
+      // base harus dari setting, bukan g.value: saat miss beruntun g.value masih di tengah ramp
+      // dan volumenya akan terus mengecil sampai hilang
       const g = audio.music.gain;
-      const base = g.value;
+      const base = audio.musicLevel;
       g.cancelScheduledValues(ctx.currentTime);
       g.setValueAtTime(base * 0.55, ctx.currentTime);
       g.linearRampToValueAtTime(base, ctx.currentTime + 0.25);

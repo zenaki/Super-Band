@@ -3,6 +3,16 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-11-11
+
+### Fixed
+
+- Suara lagu pelan-pelan menghilang di lagu tanpa stem gitar terpisah (auto-chart dan import satu file audio). Efek "redam saat miss" membaca volume yang sedang turun, jadi tiap miss beruntun volumenya makin kecil sampai habis.
+
+### Changed
+
+- Auto-chart: lane sekarang ditentukan dari estimasi nada tiap onset (harmonic summation + pelacakan kontur), bukan dari spectral centroid. Arah naik-turun note lebih mengikuti melodi. Lagu yang sudah di-auto-chart sebelumnya perlu dibuat ulang supaya ikut berubah.
+
 ## [1.0.0] - 2026-11-11
 
 Rilis pertama.
