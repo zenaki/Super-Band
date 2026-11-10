@@ -7,7 +7,16 @@
 
 export const HIT_WINDOWS = { relaxed: 0.1, normal: 0.075, strict: 0.055 };
 
-export const NOTE_POINTS = 50;
+// Poin per gem tergantung ketepatan timing.
+export const GRADE_POINTS = { perfect: 100, great: 75, cool: 50 };
+export const NOTE_POINTS = GRADE_POINTS.great; // acuan untuk skor full combo
+// batas |selisih waktu| relatif terhadap hit window
+export const GRADE_LIMITS = { perfect: 0.34, great: 0.67 };
+
+export function gradeFor(delta, window) {
+  const r = Math.abs(delta) / window;
+  return r <= GRADE_LIMITS.perfect ? 'perfect' : r <= GRADE_LIMITS.great ? 'great' : 'cool';
+}
 export const SUSTAIN_POINTS_PER_BEAT = 25;
 export const SUPER_PER_PHRASE = 0.25;
 export const SUPER_MIN = 0.5;
@@ -90,6 +99,7 @@ export class Engine {
     this.deltaAbsSum = 0;
     this.early = 0;
     this.late = 0;
+    this.grades = { perfect: 0, great: 0, cool: 0 };
   }
 
   emit(type, data) {
@@ -330,7 +340,9 @@ export class Engine {
   _hit(i, t, lanes) {
     const note = this.notes[i];
     const before = baseMultiplier(this.streak);
-    const points = NOTE_POINTS * note.count * this.multiplier;
+    const grade = gradeFor(t - note.time, this.window);
+    this.grades[grade]++;
+    const points = GRADE_POINTS[grade] * note.count * this.multiplier;
     this.status[i] = HIT;
     this.score += points;
     this.hits++;
@@ -352,7 +364,7 @@ export class Engine {
       }
     }
     this._advance();
-    this.emit('hit', { note, delta, points });
+    this.emit('hit', { note, delta, points, grade });
 
     const after = baseMultiplier(this.streak);
     if (after !== before) this.emit('mult', { mult: after });
@@ -418,6 +430,9 @@ export class Engine {
       avgErrorMs: this.hits ? (this.deltaAbsSum / this.hits) * 1000 : 0,
       early: this.early,
       late: this.late,
+      perfect: this.grades.perfect,
+      great: this.grades.great,
+      cool: this.grades.cool,
     };
   }
 }

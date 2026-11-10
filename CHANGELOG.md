@@ -3,6 +3,18 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-11
+
+### Added
+
+- Penilaian timing per note: **Perfect**, **Great**, **Cool**, dan **Miss**, muncul di tengah highway.
+- **Combo counter** besar di bawah tulisan penilaian, plus poin yang baru didapat (`+200`).
+- Rincian jumlah Perfect / Great / Cool / Miss di layar hasil.
+
+### Changed
+
+- Skor per note sekarang tergantung timing: Perfect 100, Great 75, Cool 50 (sebelumnya rata 50). Skor lama tetap tersimpan tapi tidak sebanding dengan skor baru.
+
 ## [1.0.1] - 2026-11-11
 
 ### Fixed

@@ -239,6 +239,9 @@ async function startGame() {
   go('game');
   app.highway.resize();
   hudCache = {};
+  hud.grade.textContent = '';
+  hud.combo.textContent = '';
+  hud.plus.textContent = '';
   $('#pause-overlay').hidden = true;
   app.session = new Session({
     highway: app.highway,
@@ -322,8 +325,30 @@ function feedback(text) {
   el.classList.add('show');
 }
 
+const GRADE_TEXT = { perfect: 'Perfect', great: 'Great', cool: 'Cool', miss: 'Miss' };
+
+function restart(el) {
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+}
+
+function judge(grade, combo, points) {
+  hud.grade.textContent = GRADE_TEXT[grade];
+  hud.grade.dataset.g = grade;
+  restart(hud.grade);
+  hud.combo.innerHTML = combo >= 2 ? `<b>${combo}</b> combo` : '';
+  if (points) {
+    hud.plus.textContent = `+${formatScore(points)}`;
+    restart(hud.plus);
+  }
+}
+
 function gameEvent(type, data) {
   const eng = app.session.engine;
+  if (type === 'hit') judge(data.grade, eng.streak, data.points);
+  else if (type === 'miss') judge('miss', 0, 0);
+  else if (type === 'ghost' && data.lost > 0) judge('miss', 0, 0);
   if (type === 'mult' && data.mult === 4) feedback('Gokil!');
   else if (type === 'hit' && eng.streak > 0 && eng.streak % 50 === 0) feedback(`${eng.streak} streak!`);
   else if (type === 'superStart') feedback('Super mode!');
@@ -371,9 +396,13 @@ function showResults(entry, res) {
     <div class="res-stars${res.gold ? ' is-gold' : ''}">${starsHtml(res.stars)}</div>
     <div><div class="song-sub">${esc(entry.song.meta.title)}, ${DIFF_LABEL[app.diff]}</div><div class="res-score">${formatScore(res.score)}</div></div>
     <div class="res-grid">
+      <div>Perfect <b>${res.perfect}</b></div>
+      <div>Great <b>${res.great}</b></div>
+      <div>Cool <b>${res.cool}</b></div>
+      <div>Miss <b>${res.misses}</b></div>
       <div>Notes kena <b>${res.hits}/${res.total}</b></div>
       <div>Akurasi <b>${Math.round(res.accuracy * 100)}%</b></div>
-      <div>Streak terpanjang <b>${res.maxStreak}</b></div>
+      <div>Combo terpanjang <b>${res.maxStreak}</b></div>
       <div>Salah tekan <b>${res.ghosts}</b></div>
       <div>Super dipakai <b>${res.superUses}x</b></div>
       <div>Timing <b>${timing}</b></div>
@@ -623,7 +652,8 @@ function renderHelp() {
     <p>Note turun di 5 lane. Tekan lane-nya tepat saat note menyentuh garis di bawah. Note berekor harus <b>ditahan</b> sampai ekornya habis.</p>
     <ul>
       <li><b>Chord</b>: dua note atau lebih sejajar, tekan bersamaan.</li>
-      <li><b>Streak</b>: tiap 10 note beruntun, multiplier naik sampai x4. Miss atau salah tekan mengembalikannya ke x1.</li>
+      <li><b>Timing</b>: makin pas makin besar poinnya. Perfect 100, Great 75, Cool 50 per note.</li>
+      <li><b>Combo</b>: tiap 10 note beruntun, multiplier naik sampai x4. Miss atau salah tekan mengembalikannya ke x1.</li>
       <li><b>Super mode</b>: note berbintang warna tosca. Kena semua satu rangkaian, meter Super terisi. Kalau sudah setengah, tap tombol Super (atau tap highway) untuk skor dobel.</li>
       <li><b>Bar ungu</b> selebar highway adalah open note. Di mode Tap, tekan lane mana saja.</li>
     </ul>
@@ -676,6 +706,9 @@ function boot() {
     section: $('#hud-section'),
     feedback: $('#hud-feedback'),
     count: $('#hud-count'),
+    grade: $('#hud-grade'),
+    combo: $('#hud-combo'),
+    plus: $('#hud-plus'),
   });
   window.addEventListener('resize', () => app.highway.resize());
   window.addEventListener('orientationchange', () => setTimeout(() => app.highway.resize(), 250));

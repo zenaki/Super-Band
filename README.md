@@ -28,7 +28,8 @@ Rhythm game 5-fret guitar ala Guitar Hero / Clone Hero / Rock Band yang jalan la
 | Guitar controller | 5 fret + strum bar | `Select` | `Start` |
 
 - Tekan lane tepat saat note menyentuh garis. Note berekor ditahan sampai habis.
-- Tiap 10 note beruntun multiplier naik, maksimal x4.
+- Makin pas timing-nya makin besar poinnya: **Perfect** 100, **Great** 75, **Cool** 50 per note.
+- Tiap 10 combo multiplier naik, maksimal x4.
 - Note tosca berbintang mengisi meter Super. Setelah setengah penuh, aktifkan untuk skor x2.
 - Untuk guitar controller: Settings, lalu pilih cara main **Strum** dan layout **Guitar controller**.
 - Timing terasa meleset? Settings, lalu **Kalibrasi audio**.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Engine, Bot, fullComboScore, starsFor, baseMultiplier } from '../js/core/engine.js';
+import { Engine, Bot, fullComboScore, starsFor, baseMultiplier, gradeFor } from '../js/core/engine.js';
 import { MOD_HOPO, OPEN } from '../js/core/chart.js';
 import { makeTrack } from './helpers.mjs';
 
@@ -21,7 +21,7 @@ test('tap mode: hit di dalam window, miss di luar', () => {
   eng.fretDown(0, T(2) - 0.04);
   eng.fretUp(0, T(2) + 0.05);
   assert.equal(eng.hits, 1);
-  assert.equal(eng.score, 50);
+  assert.equal(eng.score, 75); // 40 ms meleset = Great
   // note kedua tidak ditekan
   eng.update(T(4) + 0.3);
   assert.equal(eng.misses, 1);
@@ -45,7 +45,7 @@ test('tap mode: chord harus lengkap, ghost tap memutus streak', () => {
   assert.equal(eng.hits, 0);
   eng.fretDown(1, T(2) + 0.02);
   assert.equal(eng.hits, 1);
-  assert.equal(eng.score, 100);
+  assert.equal(eng.score, 200); // chord 2 gem, Perfect
   eng.fretUp(0, T(2) + 0.1);
   eng.fretUp(1, T(2) + 0.1);
   // chord kedua cuma separuh -> miss
@@ -79,9 +79,10 @@ test('multiplier naik tiap 10 streak sampai 4x', () => {
   }
   assert.equal(eng.hits, 40);
   assert.equal(eng.misses, 0);
-  // 10x50 + 10x100 + 10x150 + 10x200
-  assert.equal(eng.score, 5000);
-  assert.equal(fullComboScore(track), 5000);
+  // semua Perfect: 10x100 + 10x200 + 10x300 + 10x400
+  assert.equal(eng.score, 10000);
+  assert.equal(fullComboScore(track), 7500);
+  assert.equal(eng.results().perfect, 40);
   const res = eng.results();
   assert.equal(res.fullCombo, true);
   assert.equal(res.stars, 5);
@@ -93,16 +94,16 @@ test('sustain: poin per beat, lepas lebih awal menghentikan poin', () => {
   const eng = new Engine(track, { mode: 'tap' });
   eng.fretDown(0, T(2));
   eng.update(T(6) + 0.01);
-  // 50 + 4 beat x 25
-  assert.equal(eng.score, 150);
+  // 100 + 4 beat x 25
+  assert.equal(eng.score, 200);
   assert.equal(eng.sustains.length, 0);
   eng.fretUp(0, T(6) + 0.02);
   eng.fretDown(1, T(10));
   eng.update(T(11));
   eng.fretUp(1, T(12));
   eng.update(T(14) + 0.1);
-  // +50 + 2 beat x 25
-  assert.equal(eng.score, 250);
+  // +100 + 2 beat x 25
+  assert.equal(eng.score, 350);
 });
 
 test('Super: phrase lengkap mengisi meter, aktivasi menggandakan skor lalu habis', () => {
@@ -127,7 +128,7 @@ test('Super: phrase lengkap mengisi meter, aktivasi menggandakan skor lalu habis
   assert.equal(eng.multiplier, 2); // streak 8 -> 1x, kali 2
   bot.update(T(12));
   eng.update(T(12));
-  assert.equal(eng.score - before, 100);
+  assert.equal(eng.score - before, 200);
   // setengah meter = 16 beat
   for (let t = T(12); t < T(11) + T(16) + 0.2; t += 1 / 120) {
     bot.update(t);
@@ -276,7 +277,7 @@ test('bot strum mode: full combo termasuk chord, HOPO, sustain, dan open', () =>
   assert.equal(res.ghosts, 0);
   assert.equal(res.hits, rows.length);
   assert.equal(res.fullCombo, true);
-  assert.ok(Math.abs(res.score - eng.fcScore) <= 2, `${res.score} vs ${eng.fcScore}`);
+  assert.ok(res.score >= eng.fcScore, `${res.score} vs ${eng.fcScore}`);
 });
 
 test('ghostPenalty off: salah tekan tidak memutus streak', () => {
@@ -305,4 +306,20 @@ test('event telat dari browser masih dihitung selama timestamp-nya valid', () =>
   eng.fretDown(0, T(2) + 0.07);
   assert.equal(eng.hits, 1);
   assert.equal(eng.misses, 0);
+});
+
+test('grade: Perfect, Great, Cool dari ketepatan timing', () => {
+  assert.equal(gradeFor(0.01, 0.075), 'perfect');
+  assert.equal(gradeFor(-0.04, 0.075), 'great');
+  assert.equal(gradeFor(0.07, 0.075), 'cool');
+  const track = makeTrack([[2, 0], [4, 1], [6, 2]]);
+  const eng = new Engine(track, { mode: 'tap' });
+  const grades = [];
+  eng.onEvent = (type, d) => type === 'hit' && grades.push([d.grade, d.points]);
+  eng.fretDown(0, T(2) + 0.005);
+  eng.fretDown(1, T(4) - 0.045);
+  eng.fretDown(2, T(6) + 0.07);
+  assert.deepEqual(grades, [['perfect', 100], ['great', 75], ['cool', 50]]);
+  const res = eng.results();
+  assert.deepEqual([res.perfect, res.great, res.cool], [1, 1, 1]);
 });

@@ -212,6 +212,20 @@ body.dim-stage #stage { opacity: 0.38; }
 @keyframes pop { 0% { opacity: 0; transform: scale(0.7) rotate(-4deg); } 15% { opacity: 1; transform: scale(1.1) rotate(-4deg); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(1) rotate(-4deg) translateY(-14px); } }
 .countdown { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font: 400 120px/1 var(--display); color: var(--kunyit);
   text-shadow: 5px 5px 0 var(--sambal); }
+.judge { position: absolute; left: 0; right: 0; top: 46%; text-align: center; pointer-events: none; }
+.grade { font: 400 38px/1 var(--display); text-shadow: 3px 3px 0 var(--aspal); opacity: 0; }
+.grade.show { animation: judge 0.45s ease-out forwards; }
+.grade[data-g='perfect'] { color: var(--kunyit); }
+.grade[data-g='great'] { color: var(--tosca); }
+.grade[data-g='cool'] { color: var(--kapur); }
+.grade[data-g='miss'] { color: var(--sambal); }
+.combo { font-weight: 700; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; text-shadow: 2px 2px 0 var(--aspal); min-height: 24px; }
+.combo b { font-size: 34px; }
+.plus { font-weight: 700; font-size: 18px; color: var(--kunyit); font-variant-numeric: tabular-nums; text-shadow: 2px 2px 0 var(--aspal); opacity: 0; }
+.plus.show { animation: plus 0.5s ease-out forwards; }
+@keyframes judge { 0% { opacity: 1; transform: scale(1.25); } 25% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes plus { 0% { opacity: 1; transform: translateY(4px); } 100% { opacity: 0; transform: translateY(-12px); } }
+@media (max-height: 460px) { .judge { top: 34%; } .grade { font-size: 30px; } .combo b { font-size: 26px; } }
 @media (max-height: 460px) { .hud-left, .hud-right { top: 30%; } .super-meter { height: 70px; } .mult { width: 52px; height: 52px; font-size: 22px; } }
 
 /* ---------- overlay ---------- */
@@ -281,5 +295,6 @@ select { background: var(--aspal); border: 2px solid var(--garis); border-radius
 
 @media (prefers-reduced-motion: reduce) {
   .super-btn:not(:disabled), .feedback.show { animation: none; }
+  .grade.show, .plus.show { animation-duration: 0.01s; }
   .feedback.show { opacity: 1; }
 }
