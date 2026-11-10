@@ -261,9 +261,9 @@ select { background: var(--aspal); border: 2px solid var(--garis); border-radius
 
 /* ---------- editor ---------- */
 .screen-editor { padding: 0; background: var(--aspal); }
-.ed-top { display: flex; gap: 6px; align-items: center; padding: calc(6px + var(--safe-t)) 8px 6px; flex: none; overflow-x: auto; }
+.ed-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: calc(6px + var(--safe-t)) 8px 6px; flex: none; }
 .ed-top .back { padding: 8px 6px; flex: none; }
-.ed-title { font-weight: 700; flex: 1; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-title { font-weight: 700; flex: 1 1 120px; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-btn { flex: none; min-width: 42px; min-height: 42px; padding: 6px 10px; border-radius: 8px; border: 2px solid var(--garis); background: var(--ungu); font-weight: 700; font-size: 15px; cursor: pointer; }
 .ed-btn.is-on { background: var(--kunyit); color: #1a0f00; border-color: var(--kunyit); }
 .ed-btn:disabled { opacity: 0.4; }

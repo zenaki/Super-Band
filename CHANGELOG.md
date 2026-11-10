@@ -1,7 +1,25 @@
 # Changelog
 
 Semua perubahan penting di project ini dicatat di file ini.
+Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-11-11
 
-- Setup awal repository.
+Rilis pertama.
+
+### Added
+
+- Gameplay 5-fret guitar dengan highway perspektif: note, chord, sustain, HOPO, tap note, open note.
+- Scoring: streak, multiplier sampai x4, Super mode (x2), rating bintang, deteksi full combo.
+- Dua cara main: **Tap** (touch, keyboard, gamepad) dan **Strum** (guitar controller) dengan aturan HOPO/tap dan anchoring.
+- Tiga lagu original bawaan yang di-generate oleh synth internal: Senja Terakhir, Neon Runway, Gamelan Riot. Masing-masing punya chart Easy, Medium, Hard, Expert.
+- Stem gitar terpisah yang di-mute saat miss.
+- Import chart Clone Hero: `.zip`, `.sng`, `notes.chart`, `notes.mid`, `song.ini`, multi-stem audio, album art.
+- Auto-chart dari file audio: deteksi onset, estimasi tempo dan fase, mapping kontur nada ke lane, sustain, phrase Super.
+- Chart editor: note, sustain, jenis note, phrase Super, snap grid, waveform, record, undo/redo, salin antar difficulty, export `.chart` / `.zip`.
+- Mode latihan 75% dan 50%.
+- Settings: kecepatan note, toleransi timing, lefty flip, volume, remap tombol keyboard, layout gamepad.
+- Kalibrasi audio offset dengan tap mengikuti bunyi klik.
+- Skor terbaik per lagu, part, dan difficulty.
+- Layout portrait dan landscape, nomor versi di kanan atas, manifest untuk Add to Home Screen.
+- Unit test untuk chart model, engine, parser format, synth, dan auto-chart.

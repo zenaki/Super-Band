@@ -651,7 +651,7 @@ function renderHelp() {
 async function openEditor(arg) {
   try {
     const mod = await import('./editor/editor.js');
-    app.editor = mod.createEditor($('#screen-editor'), { app, go, toast, showLoading, hideLoading });
+    if (!app.editor) app.editor = mod.createEditor($('#screen-editor'), { app, go, toast, showLoading, hideLoading });
     app.editor.open(arg || null);
   } catch (err) {
     toast(`Editor gagal dibuka: ${err.message}`, 5000);
