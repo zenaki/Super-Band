@@ -7,7 +7,7 @@ import { assignLanes } from './songBuilder.js';
 
 const FFT_N = 1024;
 
-function fft(re, im) {
+export function fft(re, im) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;
@@ -72,6 +72,7 @@ export async function analyze(channels, sampleRate, onProgress) {
   for (let b = 1; b < half; b++) logF[b] = 12 * Math.log2(b * binHz);
   const env = new Float32Array(frames);
   const centroid = new Float32Array(frames);
+  const bright = new Float32Array(frames); // pusat massa spektrum penuh, dipakai untuk drum
   const energy = new Float32Array(frames);
   const re = new Float32Array(FFT_N);
   const im = new Float32Array(FFT_N);
@@ -90,6 +91,8 @@ export async function analyze(channels, sampleRate, onProgress) {
     let cSum = 0;
     let cW = 0;
     let en = 0;
+    let bSum = 0;
+    let bW = 0;
     for (let b = 1; b < half; b++) {
       const mag = Math.log1p(20 * Math.sqrt(re[b] * re[b] + im[b] * im[b]));
       cur[b] = mag;
@@ -98,6 +101,8 @@ export async function analyze(channels, sampleRate, onProgress) {
       const d = mag - ref;
       if (b >= bLow && b <= bHigh) en += mag;
       if (d > 0) {
+        bSum += d * logF[b];
+        bW += d;
         if (b < bLow) low += d;
         else if (b <= bHigh) {
           mid += d;
@@ -108,6 +113,7 @@ export async function analyze(channels, sampleRate, onProgress) {
     }
     env[f] = 0.7 * low + mid + 0.3 * high;
     centroid[f] = cW > 0 ? cSum / cW : 0;
+    bright[f] = bW > 0 ? bSum / bW : 0;
     energy[f] = en;
     const tmp = prev;
     prev = cur;
@@ -117,7 +123,7 @@ export async function analyze(channels, sampleRate, onProgress) {
       await nextTick();
     }
   }
-  return { env, centroid, energy, fps: sr / hop, lead: FFT_N / 2 / sr, mono, sr, hop };
+  return { env, centroid, bright, energy, fps: sr / hop, lead: FFT_N / 2 / sr, mono, sr, hop };
 }
 
 
@@ -150,7 +156,7 @@ function spectrumAt(mono, start, out) {
 }
 
 const PT = { sub: 0.3, cont: 0.7, hdec: 0.95, lo: 36, delay: 0.015, k: 5 };
-export function pitchCandidates(mono, sr, onsetSample) {
+export function pitchCandidates(mono, sr, onsetSample, lo = PT.lo, hi = PITCH_HI) {
   // spektrum sesudah onset dikurangi sebagian spektrum sebelum onset:
   // yang tersisa didominasi nada yang baru masuk, bukan bass/pad yang masih menahan
   spectrumAt(mono, onsetSample + Math.round(sr * PT.delay), pMag);
@@ -158,8 +164,8 @@ export function pitchCandidates(mono, sr, onsetSample) {
   const half = PITCH_N / 2;
   for (let b = 0; b < half; b++) pMag[b] = Math.max(0, pMag[b] - PT.sub * pPrev[b]);
   const binHz = sr / PITCH_N;
-  const LO = PT.lo;
-  const steps = (PITCH_HI - LO) * 4 + 1;
+  const LO = lo;
+  const steps = (hi - LO) * 4 + 1;
   const sal = new Float32Array(steps);
   for (let s = 0; s < steps; s++) {
     const f0 = 440 * Math.pow(2, (LO + s / 4 - 69) / 12);
@@ -184,13 +190,13 @@ export function pitchCandidates(mono, sr, onsetSample) {
 
 // Pilih satu nada per onset dengan Viterbi: gabungan skor kandidat dan kelancaran kontur,
 // supaya melodi tidak loncat oktaf atau pindah ke instrumen lain di tengah frase.
-export function trackPitches(mono, sr, onsetSamples) {
+export function trackPitches(mono, sr, onsetSamples, lo, hi) {
   const n = onsetSamples.length;
   const out = new Float32Array(n);
   if (!n) return out;
   const cands = [];
   for (let i = 0; i < n; i++) {
-    let c = pitchCandidates(mono, sr, onsetSamples[i]);
+    let c = pitchCandidates(mono, sr, onsetSamples[i], lo, hi);
     if (!c.length) c = [{ pitch: 60, score: 1 }];
     const top = c[0].score || 1;
     cands.push(c.map((x) => ({ pitch: x.pitch, local: x.score / top, cost: 0, back: -1 })));
@@ -341,21 +347,30 @@ const LANES = { easy: 3, medium: 4, hard: 5, expert: 5 };
 const CHORD_RATE = { easy: 0, medium: 0.06, hard: 0.12, expert: 0.16 };
 
 // Hasil: song model siap disimpan ke library.
-export async function autoChart(channels, sampleRate, meta = {}, onProgress) {
-  const an = await analyze(channels, sampleRate, onProgress);
-  const { bpm, phase } = estimateTempo(an.env, an.fps);
+// opts.stem: { signal, sampleRate, kind } hasil separate(). Tempo tetap dihitung dari lagu lengkap,
+// sedangkan note dan lane diambil dari instrumen yang dipilih.
+export async function autoChart(channels, sampleRate, meta = {}, onProgress, opts = {}) {
+  const stem = opts.stem && opts.stem.kind !== 'all' ? opts.stem : null;
+  const full = await analyze(channels, sampleRate, (v) => onProgress && onProgress(stem ? v * 0.5 : v));
+  const { bpm, phase } = estimateTempo(full.env, full.fps);
+  const an = stem ? await analyze([stem.signal], stem.sampleRate, (v) => onProgress && onProgress(0.5 + v * 0.5)) : full;
+  const kind = stem ? stem.kind : 'all';
   const onsets = pickOnsets(an.env, an.fps);
   const res = RES_DEFAULT;
   const beatSec = 60 / bpm;
-  const song = createSong({ title: meta.title || 'Untitled', artist: meta.artist || 'Unknown', charter: 'Auto-chart' });
+  const song = createSong({ title: meta.title || 'Untitled', artist: meta.artist || 'Unknown', charter: `Auto-chart (${kind})` });
   song.resolution = res;
   song.tempos = [{ tick: 0, bpm }];
-  song.offset = phase + an.lead + 0.004;
+  song.offset = phase + full.lead + 0.004;
   song.autoCharted = true;
 
   // nada tiap onset, dipakai untuk menentukan lane (nada tinggi = lane kanan)
   const onsetSamples = onsets.map((o) => Math.round((o.frame / an.fps + an.lead) * an.sr));
-  const pitches = trackPitches(an.mono, an.sr, onsetSamples);
+  let pitches;
+  if (kind === 'drums') pitches = onsets.map((o) => an.bright[o.frame]); // kick di kiri, cymbal di kanan
+  else if (kind === 'bass') pitches = trackPitches(an.mono, an.sr, onsetSamples, 28, 60);
+  else if (kind === 'vocals') pitches = trackPitches(an.mono, an.sr, onsetSamples, 45, 84);
+  else pitches = trackPitches(an.mono, an.sr, onsetSamples);
   onsets.forEach((o, i) => {
     o.pitch = pitches[i];
   });

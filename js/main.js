@@ -10,6 +10,7 @@ import { formatScore, formatTime, hashString, uid, extOf } from './core/util.js'
 import { settings, saveSettings, resetSettings, getScore, bestStars, submitScore, clearScores, DEFAULTS } from './store/settings.js';
 import { builtins, listEntries, loadAudio, importFiles, saveEntry, deleteEntry, decodeBlob, getArtUrl, titleFromName } from './store/library.js';
 import { autoChart } from './audio/analysis.js';
+import { separate, STEMS } from './audio/separate.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -65,6 +66,7 @@ function coverStyle(entry) {
 export function go(name, arg) {
   if (app.screen === 'game' && name !== 'game') endSession();
   if (app.screen === 'editor' && name !== 'editor' && app.editor) app.editor.close();
+  if (app.screen === 'add' && name !== 'add') stopPreview();
   app.screen = name;
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('is-active', el.id === `screen-${name}`);
   document.body.classList.toggle('in-game', name === 'game' || name === 'editor');
@@ -447,27 +449,123 @@ async function handleImport(files) {
   }
 }
 
+// Auto-chart: buka audio dulu, lalu user memilih instrumen yang dijadikan frets.
+const split = { file: null, buf: null, kind: 'guitar', node: null };
+
+const SPLIT_HINT = {
+  all: 'Note mengikuti semua bunyi di lagu. Paling ramai, cocok kalau instrumennya sulit dipisah.',
+  guitar: 'Mengambil bunyi bernada yang posisinya di kiri/kanan stereo, biasanya gitar dan keyboard.',
+  bass: 'Mengambil nada rendah di tengah. Hasilnya paling kasar, sering butuh dirapikan di editor.',
+  drums: 'Mengambil bunyi pukulan. Kick cenderung di lane kiri, cymbal di kanan.',
+  vocals: 'Mengambil bunyi bernada di tengah stereo, biasanya vokal utama. Note mengikuti nyanyian.',
+};
+
+function channelsOf(buf) {
+  const out = [];
+  for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) out.push(buf.getChannelData(c));
+  return out;
+}
+
+function stopPreview() {
+  if (split.node) {
+    try {
+      split.node.stop();
+    } catch (err) {
+      /* sudah berhenti */
+    }
+    split.node = null;
+  }
+  $('#split-preview').textContent = 'Dengarkan hasil pisah';
+}
+
+function renderSplit() {
+  $('#split-chips').innerHTML = STEMS.map(([k, label]) => `<button class="chip${k === split.kind ? ' is-on' : ''}" data-stem="${k}">${label}</button>`).join('');
+  const monoNote = split.buf && split.buf.numberOfChannels < 2 && split.kind !== 'all' ? ' File ini mono, jadi pemisahan gitar dan vokal tidak bisa dibedakan dari posisi stereo.' : '';
+  $('#split-hint').textContent = SPLIT_HINT[split.kind] + monoNote;
+}
+
 async function handleAutoChart(file) {
   await audio.unlock();
+  stopPreview();
   showLoading('Membuka audio', 0);
   try {
-    const buf = await decodeBlob(file);
-    const channels = [];
-    for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) channels.push(buf.getChannelData(c));
+    split.buf = await decodeBlob(file);
+    split.file = file;
+    hideLoading();
+    setStatus('');
+    $('#split-file').textContent = `${file.name}, ${formatTime(split.buf.duration)}`;
+    $('#split-panel').hidden = false;
+    renderSplit();
+    $('#split-panel').scrollIntoView({ block: 'nearest' });
+  } catch (err) {
+    hideLoading();
+    setStatus(`Audio tidak bisa dibuka: ${err.message || 'format tidak didukung browser ini'}. Coba MP3 atau M4A.`, true);
+  }
+}
+
+$('#split-chips').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-stem]');
+  if (!chip) return;
+  split.kind = chip.dataset.stem;
+  stopPreview();
+  sfx.click();
+  renderSplit();
+});
+
+$('#split-preview').addEventListener('click', async () => {
+  if (split.node) return stopPreview();
+  if (!split.buf) return;
+  await audio.unlock();
+  const from = Math.max(0, Math.min(split.buf.duration - 12, split.buf.duration * 0.3));
+  $('#split-preview').textContent = 'Memisahkan';
+  const st = await separate(channelsOf(split.buf), split.buf.sampleRate, split.kind, null, [from, from + 12]);
+  let peak = 0.01;
+  for (let i = 0; i < st.signal.length; i += 3) peak = Math.max(peak, Math.abs(st.signal[i]));
+  const out = audio.ctx.createBuffer(1, st.signal.length, st.sampleRate);
+  const d = out.getChannelData(0);
+  const gain = Math.min(8, 0.7 / peak);
+  for (let i = 0; i < d.length; i++) d[i] = st.signal[i] * gain;
+  audio.setVolumes(settings.musicVolume, settings.sfxVolume);
+  const node = audio.ctx.createBufferSource();
+  node.buffer = out;
+  node.connect(audio.music);
+  node.onended = () => split.node === node && stopPreview();
+  node.start();
+  split.node = node;
+  $('#split-preview').textContent = 'Stop';
+});
+
+$('#split-go').addEventListener('click', async () => {
+  const { file, buf, kind } = split;
+  if (!buf) return;
+  stopPreview();
+  const label = STEMS.find((x) => x[0] === kind)[1];
+  try {
+    const channels = channelsOf(buf);
+    let stem = null;
+    if (kind !== 'all') {
+      showLoading(`Memisahkan ${label.toLowerCase()}`, 0);
+      stem = await separate(channels, buf.sampleRate, kind, (v) => showLoading(`Memisahkan ${label.toLowerCase()}`, v));
+      stem.kind = kind;
+    }
     const meta = titleFromName(file.name);
-    const song = await autoChart(channels, buf.sampleRate, meta, (v) => showLoading('Mendengarkan ketukan lagu', v));
+    const song = await autoChart(channels, buf.sampleRate, meta, (v) => showLoading('Mendengarkan ketukan lagu', v), { stem });
     song.meta.album = '';
+    if (kind !== 'all') song.meta.title = `${song.meta.title} (${label})`;
     const entry = { id: uid('auto'), source: 'auto', song };
     const ext = extOf(file.name) || 'mp3';
     await saveEntry(entry, [{ name: `song.${ext}`, blob: file }]);
     hideLoading();
+    split.buf = null;
+    split.file = null;
+    $('#split-panel').hidden = true;
     toast(`Chart jadi, tempo ${Math.round(song.detectedBpm)} BPM`);
     go('songs', entry.id);
   } catch (err) {
     hideLoading();
-    setStatus(`Audio tidak bisa diproses: ${err.message || 'format tidak didukung browser ini'}. Coba MP3 atau M4A.`, true);
+    setStatus(`Chart gagal dibuat: ${err.message}`, true);
   }
-}
+});
 
 for (const id of ['#file-import', '#dir-import']) {
   $(id).addEventListener('change', (e) => {
@@ -669,7 +767,7 @@ function renderHelp() {
     <h3>Lagu sendiri</h3>
     <ul>
       <li><b>Import</b>: file .zip atau .sng lagu Clone Hero, atau notes.chart / notes.mid beserta audionya.</li>
-      <li><b>Auto-chart</b>: pilih file audio, chart dibuat otomatis.</li>
+      <li><b>Auto-chart</b>: pilih file audio, pilih instrumen yang mau dijadikan frets (gitar, bass, drum, vokal, atau semua), lalu chart dibuat otomatis.</li>
       <li><b>Chart editor</b>: bikin atau rapikan chart, lalu export ke .chart.</li>
     </ul>
     <p>Di iPhone, pakai Share lalu Add to Home Screen supaya layarnya penuh dan lagu tersimpan lebih awet.</p>`;

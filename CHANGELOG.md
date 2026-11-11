@@ -3,6 +3,19 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-11
+
+### Added
+
+- **Pisah instrumen** di Auto-chart: setelah memilih file audio, pilih frets dibuat dari Semua instrumen, Gitar / melodi, Bass, Drum, atau Vokal.
+- Tombol **Dengarkan hasil pisah** untuk memutar 12 detik hasil pemisahan sebelum chart dibuat.
+- Pemisahan memakai filter ringan (bunyi bertahan vs pukulan, posisi tengah vs samping stereo, rentang frekuensi), jadi jalan di HP tanpa download model. Hasilnya kasar, bukan stem bersih.
+
+### Changed
+
+- Tempo selalu dihitung dari lagu lengkap, sedangkan note dan lane diambil dari instrumen yang dipilih.
+- Judul lagu hasil auto-chart diberi keterangan instrumennya, misalnya "Headhunt (Gitar / melodi)".
+
 ## [1.1.0] - 2026-11-11
 
 ### Added

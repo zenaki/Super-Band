@@ -12,7 +12,7 @@ Rhythm game 5-fret guitar ala Guitar Hero / Clone Hero / Rock Band yang jalan la
   - *Neon Runway* (rock, level 2)
   - *Gamelan Riot* (riff cepat bernuansa pelog, level 4)
 - **Import chart Clone Hero**: `.zip`, `.sng`, atau `notes.chart` / `notes.mid` + `song.ini` + audio. Part Lead Guitar, Co-op, Rhythm, Bass, dan Keys didukung, lengkap dengan multi-stem (stem instrumen di-mute saat miss).
-- **Auto-chart dari audio**: pilih MP3/M4A/WAV/OGG, chart 4 difficulty dibuat otomatis dari onset dan tempo lagunya.
+- **Auto-chart dari audio**: pilih MP3/M4A/WAV/OGG, pilih instrumen yang dijadikan frets (semua, gitar/melodi, bass, drum, vokal), lalu chart 4 difficulty dibuat otomatis. Pemisahan instrumennya filter ringan tanpa model AI, jadi hasilnya kasar.
 - **Chart editor** di browser: pasang note, sustain, HOPO/tap, phrase Super, record sambil lagu jalan, undo/redo, lalu export ke `.chart` atau `.zip` yang bisa dibuka Clone Hero.
 - 4 difficulty (Easy, Medium, Hard, Expert), mode latihan 75% dan 50%, bintang, skor terbaik per lagu.
 - Input **touch**, **keyboard**, **gamepad**, dan **guitar controller** (mode strum).

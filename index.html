@@ -101,8 +101,18 @@
         </div>
         <div class="panel">
           <h3>Auto-chart dari audio</h3>
-          <p>Pilih MP3, M4A, WAV, atau OGG. Notes untuk 4 difficulty dibuat otomatis dari ketukan lagunya, dan bisa dirapikan di chart editor.</p>
+          <p>Pilih MP3, M4A, WAV, atau OGG. Setelah itu pilih instrumen yang mau dijadikan frets. Notes untuk 4 difficulty dibuat otomatis dan bisa dirapikan di chart editor.</p>
           <label class="btn btn-primary file-btn">Pilih file audio<input id="file-audio" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.flac" hidden></label>
+        </div>
+        <div class="panel" id="split-panel" hidden>
+          <h3>Frets dari instrumen apa?</h3>
+          <p id="split-file"></p>
+          <div class="chips" id="split-chips"></div>
+          <p class="hint" id="split-hint"></p>
+          <div class="btn-row">
+            <button class="btn" id="split-preview">Dengarkan hasil pisah</button>
+            <button class="btn btn-primary" id="split-go">Buat chart</button>
+          </div>
         </div>
         <div id="add-status" class="status" aria-live="polite"></div>
         <p class="hint">Lagu disimpan di browser ini saja, tidak di-upload ke mana pun. Pakai hanya lagu yang memang kamu punya haknya.</p>
