@@ -73,6 +73,7 @@ export async function analyze(channels, sampleRate, onProgress) {
   const env = new Float32Array(frames);
   const centroid = new Float32Array(frames);
   const bright = new Float32Array(frames); // pusat massa spektrum penuh, dipakai untuk drum
+  const lowEnv = new Float32Array(frames); // onset frekuensi rendah (kick), untuk menentukan ketukan 1
   const energy = new Float32Array(frames);
   const re = new Float32Array(FFT_N);
   const im = new Float32Array(FFT_N);
@@ -112,6 +113,7 @@ export async function analyze(channels, sampleRate, onProgress) {
       }
     }
     env[f] = 0.7 * low + mid + 0.3 * high;
+    lowEnv[f] = low;
     centroid[f] = cW > 0 ? cSum / cW : 0;
     bright[f] = bW > 0 ? bSum / bW : 0;
     energy[f] = en;
@@ -123,7 +125,7 @@ export async function analyze(channels, sampleRate, onProgress) {
       await nextTick();
     }
   }
-  return { env, centroid, bright, energy, fps: sr / hop, lead: FFT_N / 2 / sr, mono, sr, hop };
+  return { env, lowEnv, centroid, bright, energy, fps: sr / hop, lead: FFT_N / 2 / sr, mono, sr, hop };
 }
 
 
@@ -342,9 +344,13 @@ export function pickOnsets(env, fps) {
   return out;
 }
 
-const GAPS = { easy: 0.42, medium: 0.26, hard: 0.17, expert: 0.1 };
+// jarak minimum antar note (detik) dan jumlah note relatif terhadap Expert,
+// mengikuti rata-rata chart Clone Hero buatan manusia
+export const GAPS = { easy: 0.3, medium: 0.18, hard: 0.13, expert: 0.1 };
+export const DENSITY = { easy: 0.36, medium: 0.6, hard: 0.82, expert: 1 };
 const LANES = { easy: 3, medium: 4, hard: 5, expert: 5 };
-const CHORD_RATE = { easy: 0, medium: 0.06, hard: 0.12, expert: 0.16 };
+export const CHORD_RATE = { easy: 0, medium: 0.2, hard: 0.4, expert: 0.5 };
+export const SUS = { room: 0.35, keep: 0.5, min: 0.3, frac: 0.7 };
 
 // Hasil: song model siap disimpan ke library.
 // opts.stem: { signal, sampleRate, kind } hasil separate(). Tempo tetap dihitung dari lagu lengkap,
@@ -352,7 +358,22 @@ const CHORD_RATE = { easy: 0, medium: 0.06, hard: 0.12, expert: 0.16 };
 export async function autoChart(channels, sampleRate, meta = {}, onProgress, opts = {}) {
   const stem = opts.stem && opts.stem.kind !== 'all' ? opts.stem : null;
   const full = await analyze(channels, sampleRate, (v) => onProgress && onProgress(stem ? v * 0.5 : v));
-  const { bpm, phase } = estimateTempo(full.env, full.fps);
+  let { bpm, phase } = estimateTempo(full.env, full.fps);
+  // Fase dari flux total sering jatuh di snare (ketukan 2 dan 4). Kick lebih sering di ketukan 1 dan 3,
+  // jadi bandingkan grid ini dengan grid yang digeser setengah ketukan, pakai onset frekuensi rendah.
+  {
+    const period = 60 / bpm;
+    const sumAt = (ph) => {
+      let s = 0;
+      for (let t = ph; t < full.lowEnv.length / full.fps; t += period) {
+        const f = Math.round(t * full.fps);
+        s += Math.max(full.lowEnv[f - 1] || 0, full.lowEnv[f] || 0, full.lowEnv[f + 1] || 0);
+      }
+      return s;
+    };
+    const alt = phase + period / 2;
+    if (sumAt(alt) > sumAt(phase)) phase = alt;
+  }
   const an = stem ? await analyze([stem.signal], stem.sampleRate, (v) => onProgress && onProgress(0.5 + v * 0.5)) : full;
   const kind = stem ? stem.kind : 'all';
   const onsets = pickOnsets(an.env, an.fps);
@@ -394,20 +415,69 @@ export async function autoChart(channels, sampleRate, meta = {}, onProgress, opt
   const lastTick = cand.length ? cand[cand.length - 1].tick : 0;
   for (let b = 2; (b + 2) * barTicks <= lastTick; b += 8) sp.push({ tick: b * barTicks, len: 2 * barTicks });
 
-  for (const diff of DIFFS) {
+  // Expert = semua onset. Difficulty di bawahnya diambil dari note Expert yang posisinya paling kuat
+  // di grid (ketukan dulu, lalu 1/8, lalu 1/16), seperti cara charter mengurangi note.
+  const sixteenth = res / 4;
+  const metric = (tick) => {
+    const s = Math.round(tick / sixteenth);
+    if (Math.abs(tick - s * sixteenth) > 1) return 0; // di luar grid
+    return s % 16 === 0 ? 4 : s % 8 === 0 ? 3.5 : s % 4 === 0 ? 3 : s % 2 === 0 ? 2 : 1;
+  };
+  for (const c of cand) c.metric = metric(c.tick);
+  const strongCut = (() => {
+    const v = cand.map((c) => c.strength).sort((x, y) => x - y);
+    return v[Math.floor(v.length * 0.5)] || 0;
+  })();
+
+  // chord: onset paling kuat dan yang bunyinya "tebal" (banyak nada sekaligus)
+  for (const c of cand) {
+    const pc = pitchCandidates(an.mono, an.sr, Math.round(c.time * an.sr));
+    let thick = 0;
+    if (pc.length >= 2) {
+      const iv = Math.abs(Math.round(pc[1].pitch - pc[0].pitch)) % 12;
+      const second = pc[1].score / pc[0].score;
+      if (iv === 5 || iv === 7) thick = second; // kwart/kwint: power chord
+      else if (iv !== 0) thick = second * 0.6;
+    }
+    c.chordScore = c.strength * (0.6 + thick);
+  }
+
+  // sustain ditentukan sekali di level Expert (jarak ke onset berikutnya yang sebenarnya),
+  // lalu difficulty lain mewarisinya. Di Easy jarak antar note selalu lebar karena dikurangi,
+  // jadi kalau dihitung ulang hampir semua note akan jadi sustain.
+  cand.forEach((c, i) => {
+    const next = cand[i + 1];
+    const room = next ? next.time - c.time : 2;
+    c.susSec = 0;
+    if (room < SUS.room) return;
+    const base = an.energy[Math.min(an.energy.length - 1, c.frame + 4)];
+    let f = c.frame + 4;
+    const maxF = Math.min(an.energy.length, c.frame + Math.round((room - 0.08) * an.fps));
+    while (f < maxF && an.energy[f] > base * SUS.keep) f++;
+    const held = (f - c.frame) / an.fps;
+    if (held >= SUS.min && held >= room * SUS.frac) c.susSec = held;
+  });
+
+  let pool = cand;
+  for (const diff of [...DIFFS].reverse()) {
     const gap = GAPS[diff];
-    const order = cand.map((c, i) => i).sort((a, b) => cand[b].weight - cand[a].weight);
-    const taken = [];
-    const keep = new Uint8Array(cand.length);
-    // bucket per detik supaya pengecekan jarak tetap cepat
+    const minMetric = { expert: 0, hard: 1, medium: 1, easy: 3 }[diff];
+    const order = pool
+      .map((c, i) => i)
+      .filter((i) => pool[i].metric >= minMetric || (diff !== 'easy' && pool[i].strength > strongCut * 2))
+      .sort((x, y) => pool[y].metric - pool[x].metric || pool[y].weight - pool[x].weight);
+    const keep = new Uint8Array(pool.length);
     const buckets = new Map();
+    const target = Math.round(cand.length * DENSITY[diff]);
+    let count = 0;
     for (const i of order) {
-      const t = cand[i].time;
+      if (count >= target) break;
+      const t = pool[i].time;
       const key = Math.floor(t);
       let ok = true;
       for (let k = key - 1; k <= key + 1 && ok; k++) {
         for (const other of buckets.get(k) || []) {
-          if (Math.abs(other - t) < gap) {
+          if (Math.abs(other - t) < gap - 1e-6) {
             ok = false;
             break;
           }
@@ -415,32 +485,25 @@ export async function autoChart(channels, sampleRate, meta = {}, onProgress, opt
       }
       if (!ok) continue;
       keep[i] = 1;
-      taken.push(i);
+      count++;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(t);
     }
-    const list = cand.filter((c, i) => keep[i]);
+    const list = pool.filter((c, i) => keep[i]);
+    pool = list;
     if (!list.length) continue;
-    const sorted = list.map((c) => c.strength).sort((a, b) => b - a);
+    const sorted = list.map((c) => c.chordScore).sort((x, y) => y - x);
     const chordCut = CHORD_RATE[diff] > 0 ? sorted[Math.floor(sorted.length * CHORD_RATE[diff])] : Infinity;
     const events = list.map((c, i) => {
       const next = list[i + 1];
       const room = next ? next.time - c.time : 2;
-      let sustain = 0;
-      if (room >= 0.7) {
-        // tahan selama energi band tengah masih bertahan
-        const base = an.energy[Math.min(an.energy.length - 1, c.frame + 4)];
-        let f = c.frame + 4;
-        const maxF = Math.min(an.energy.length, c.frame + Math.round((room - 0.18) * an.fps));
-        while (f < maxF && an.energy[f] > base * 0.55) f++;
-        const held = (f - c.frame) / an.fps;
-        if (held >= 0.45) sustain = Math.round((held / beatSec) * res);
-      }
+      const held = Math.min(c.susSec, room - 0.12);
+      const sustain = held >= SUS.min ? Math.round((held / beatSec) * res) : 0;
       return {
         step: c.tick / (res / 4),
         tick: c.tick,
         pitch: c.pitch,
-        gems: c.strength >= chordCut ? 2 : 1,
+        gems: c.chordScore >= chordCut ? 2 : 1,
         wide: false,
         sustain,
       };

@@ -3,6 +3,17 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-11
+
+### Changed
+
+Auto-chart disetel ulang dengan membandingkannya ke 4 chart Clone Hero buatan manusia.
+
+- **Chord**: Expert sekarang sekitar 50% chord (sebelumnya 16%), diprioritaskan pada onset kuat yang bunyinya seperti power chord. Chart manusia di lagu rock umumnya 48–83% chord.
+- **Easy, Medium, Hard** diambil dari note Expert yang posisinya paling kuat di ketukan, dengan jumlah note mengikuti rasio chart manusia, bukan dari onset terkuat dengan jarak minimum.
+- **Ketukan 1**: fase grid dipilih dari onset kick, bukan dari total onset, supaya grid tidak jatuh di snare.
+- **Sustain** dideteksi sekali di Expert lalu diwariskan ke difficulty lain. Sebelumnya hampir semua note Easy jadi sustain.
+
 ## [1.3.0] - 2026-11-11
 
 ### Added
