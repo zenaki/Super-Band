@@ -10,7 +10,7 @@ import { formatScore, formatTime, hashString, uid, extOf } from './core/util.js'
 import { settings, saveSettings, resetSettings, getScore, bestStars, submitScore, clearScores, DEFAULTS } from './store/settings.js';
 import { builtins, listEntries, loadAudio, importFiles, saveEntry, deleteEntry, decodeBlob, getArtUrl, titleFromName } from './store/library.js';
 import { autoChart } from './audio/analysis.js';
-import { separate, STEMS } from './audio/separate.js';
+import { separate, STEMS, stemFromName, STEM_LABEL } from './audio/separate.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -441,7 +441,7 @@ async function handleImport(files) {
       if (res.errors.length) setStatus(res.errors.join('\n'), true);
       else return go('songs', res.imported[0].id);
     } else if (res.audioOnly.length) {
-      return handleAutoChart(res.audioOnly[0]);
+      return handleAutoChart(res.audioOnly);
     } else setStatus(res.errors.join('\n') || 'Tidak ada chart yang ditemukan di file itu.', true);
   } catch (err) {
     hideLoading();
@@ -449,8 +449,10 @@ async function handleImport(files) {
   }
 }
 
-// Auto-chart: buka audio dulu, lalu user memilih instrumen yang dijadikan frets.
-const split = { file: null, buf: null, kind: 'guitar', node: null };
+// Auto-chart: user memilih instrumen yang dijadikan frets.
+// Satu file  -> instrumen dipisah kasar dengan filter (separate.js).
+// Multi-file -> file stem asli (mvsep, Demucs, ...) dikenali dari nama filenya.
+const split = { files: [], mix: null, stems: {}, bufs: new Map(), kind: 'guitar', node: null, multi: false };
 
 const SPLIT_HINT = {
   all: 'Note mengikuti semua bunyi di lagu. Paling ramai, cocok kalau instrumennya sulit dipisah.',
@@ -466,6 +468,15 @@ function channelsOf(buf) {
   return out;
 }
 
+async function bufOf(file) {
+  if (!split.bufs.has(file)) {
+    // simpan satu hasil decode saja supaya memori HP tidak habis
+    split.bufs.clear();
+    split.bufs.set(file, await decodeBlob(file));
+  }
+  return split.bufs.get(file);
+}
+
 function stopPreview() {
   if (split.node) {
     try {
@@ -475,27 +486,62 @@ function stopPreview() {
     }
     split.node = null;
   }
-  $('#split-preview').textContent = 'Dengarkan hasil pisah';
+  $('#split-preview').textContent = split.multi ? 'Dengarkan stem ini' : 'Dengarkan hasil pisah';
 }
 
 function renderSplit() {
-  $('#split-chips').innerHTML = STEMS.map(([k, label]) => `<button class="chip${k === split.kind ? ' is-on' : ''}" data-stem="${k}">${label}</button>`).join('');
-  const monoNote = split.buf && split.buf.numberOfChannels < 2 && split.kind !== 'all' ? ' File ini mono, jadi pemisahan gitar dan vokal tidak bisa dibedakan dari posisi stereo.' : '';
-  $('#split-hint').textContent = SPLIT_HINT[split.kind] + monoNote;
+  const options = split.multi
+    ? [...(split.mix ? [['all', 'Semua instrumen']] : []), ...Object.keys(split.stems).map((k) => [k, STEM_LABEL[k]])]
+    : STEMS;
+  if (!options.some((o) => o[0] === split.kind)) split.kind = (options.find((o) => o[0] === 'guitar') || options[0])[0];
+  $('#split-chips').innerHTML = options.map(([k, label]) => `<button class="chip${k === split.kind ? ' is-on' : ''}" data-stem="${k}">${label}</button>`).join('');
+  let hint;
+  if (split.multi) {
+    const stemCount = Object.keys(split.stems).length;
+    const playsStems = !split.mix || stemCount >= 4 || split.stems.other;
+    hint = split.kind === 'all' ? 'Note mengikuti semua bunyi di lagu lengkap.' : `Frets dibuat langsung dari file stem ${STEM_LABEL[split.kind].toLowerCase()}.`;
+    if (split.kind !== 'all') {
+      hint += playsStems
+        ? ' Saat main, stem ini di-mute kalau kamu miss.'
+        : ' Saat main yang diputar lagu lengkapnya. Supaya instrumen ini bisa di-mute saat miss, upload juga semua stem lainnya.';
+    }
+    if (!split.mix) hint += ' Tidak ada file lagu lengkap, jadi yang diputar gabungan semua stem.';
+  } else hint = SPLIT_HINT[split.kind];
+  $('#split-hint').textContent = hint;
 }
 
-async function handleAutoChart(file) {
+async function handleAutoChart(input) {
+  const files = Array.isArray(input) ? input : [input];
+  if (!files.length) return;
   await audio.unlock();
   stopPreview();
+  split.files = files;
+  split.bufs.clear();
+  split.stems = {};
+  split.mix = null;
+  for (const f of files) {
+    const kind = stemFromName(f.name);
+    if (kind && !split.stems[kind]) split.stems[kind] = f;
+    else if (!kind && !split.mix) split.mix = f;
+  }
+  split.multi = Object.keys(split.stems).length > 0 && files.length > 1;
+  if (!split.multi) {
+    split.mix = files[0];
+    split.stems = {};
+  }
   showLoading('Membuka audio', 0);
   try {
-    split.buf = await decodeBlob(file);
-    split.file = file;
+    const first = split.mix || Object.values(split.stems)[0];
+    const buf = await bufOf(first);
     hideLoading();
     setStatus('');
-    $('#split-file').textContent = `${file.name}, ${formatTime(split.buf.duration)}`;
+    const names = split.multi
+      ? `${split.mix ? `Lagu lengkap: ${split.mix.name}. ` : ''}Stem: ${Object.keys(split.stems).map((k) => STEM_LABEL[k]).join(', ')}.`
+      : `${first.name}, ${formatTime(buf.duration)}`;
+    $('#split-file').textContent = names;
     $('#split-panel').hidden = false;
     renderSplit();
+    stopPreview();
     $('#split-panel').scrollIntoView({ block: 'nearest' });
   } catch (err) {
     hideLoading();
@@ -514,56 +560,113 @@ $('#split-chips').addEventListener('click', (e) => {
 
 $('#split-preview').addEventListener('click', async () => {
   if (split.node) return stopPreview();
-  if (!split.buf) return;
+  if (!split.files.length) return;
   await audio.unlock();
-  const from = Math.max(0, Math.min(split.buf.duration - 12, split.buf.duration * 0.3));
-  $('#split-preview').textContent = 'Memisahkan';
-  const st = await separate(channelsOf(split.buf), split.buf.sampleRate, split.kind, null, [from, from + 12]);
-  let peak = 0.01;
-  for (let i = 0; i < st.signal.length; i += 3) peak = Math.max(peak, Math.abs(st.signal[i]));
-  const out = audio.ctx.createBuffer(1, st.signal.length, st.sampleRate);
-  const d = out.getChannelData(0);
-  const gain = Math.min(8, 0.7 / peak);
-  for (let i = 0; i < d.length; i++) d[i] = st.signal[i] * gain;
-  audio.setVolumes(settings.musicVolume, settings.sfxVolume);
-  const node = audio.ctx.createBufferSource();
-  node.buffer = out;
-  node.connect(audio.music);
-  node.onended = () => split.node === node && stopPreview();
-  node.start();
-  split.node = node;
-  $('#split-preview').textContent = 'Stop';
+  $('#split-preview').textContent = 'Menyiapkan';
+  try {
+    const realStem = split.multi && split.kind !== 'all' ? split.stems[split.kind] : null;
+    const buf = await bufOf(realStem || split.mix);
+    const from = Math.max(0, Math.min(buf.duration - 12, buf.duration * 0.3));
+    const st = await separate(channelsOf(buf), buf.sampleRate, realStem || split.multi ? 'all' : split.kind, null, [from, from + 12]);
+    let peak = 0.01;
+    for (let i = 0; i < st.signal.length; i += 3) peak = Math.max(peak, Math.abs(st.signal[i]));
+    const out = audio.ctx.createBuffer(1, st.signal.length, st.sampleRate);
+    const d = out.getChannelData(0);
+    const gain = Math.min(8, 0.7 / peak);
+    for (let i = 0; i < d.length; i++) d[i] = st.signal[i] * gain;
+    audio.setVolumes(settings.musicVolume, settings.sfxVolume);
+    const node = audio.ctx.createBufferSource();
+    node.buffer = out;
+    node.connect(audio.music);
+    node.onended = () => split.node === node && stopPreview();
+    node.start();
+    split.node = node;
+    $('#split-preview').textContent = 'Stop';
+  } catch (err) {
+    stopPreview();
+    setStatus(`Preview gagal: ${err.message || 'audio tidak bisa dibuka'}`, true);
+  }
 });
 
+// mono 22 kHz dari satu file, untuk analisis
+async function monoOf(file) {
+  const buf = await bufOf(file);
+  return separate(channelsOf(buf), buf.sampleRate, 'all');
+}
+
 $('#split-go').addEventListener('click', async () => {
-  const { file, buf, kind } = split;
-  if (!buf) return;
+  if (!split.files.length) return;
   stopPreview();
-  const label = STEMS.find((x) => x[0] === kind)[1];
+  const kind = split.kind;
   try {
-    const channels = channelsOf(buf);
     let stem = null;
-    if (kind !== 'all') {
-      showLoading(`Memisahkan ${label.toLowerCase()}`, 0);
-      stem = await separate(channels, buf.sampleRate, kind, (v) => showLoading(`Memisahkan ${label.toLowerCase()}`, v));
-      stem.kind = kind;
+    let mixSig;
+    let label;
+    const saved = [];
+    let play = null;
+    const extName = (base, f) => `${base}.${extOf(f.name) || 'mp3'}`;
+    if (split.multi) {
+      label = kind === 'all' ? 'Semua instrumen' : STEM_LABEL[kind];
+      if (kind !== 'all') {
+        showLoading(`Membaca stem ${label.toLowerCase()}`, 0.1);
+        stem = await monoOf(split.stems[kind]);
+        stem.kind = kind === 'piano' || kind === 'other' ? 'guitar' : kind;
+      }
+      if (split.mix) {
+        showLoading('Membaca lagu lengkap', 0.3);
+        mixSig = await monoOf(split.mix);
+      } else {
+        // tanpa lagu lengkap: tempo dihitung dari gabungan semua stem
+        const keys = Object.keys(split.stems);
+        for (let i = 0; i < keys.length; i++) {
+          showLoading('Menggabungkan stem', i / keys.length);
+          const m = await monoOf(split.stems[keys[i]]);
+          if (!mixSig) mixSig = m;
+          else for (let k = 0; k < Math.min(mixSig.signal.length, m.signal.length); k++) mixSig.signal[k] += m.signal[k];
+        }
+      }
+      const stemNames = Object.fromEntries(Object.entries(split.stems).map(([k, f]) => [k, extName(k, f)]));
+      const others = Object.keys(split.stems).filter((k) => k !== kind);
+      const playsStems = !split.mix || Object.keys(split.stems).length >= 4 || split.stems.other;
+      if (kind !== 'all' && playsStems && others.length) {
+        play = { instrument: [stemNames[kind]], backing: others.map((k) => stemNames[k]) };
+        for (const k of Object.keys(split.stems)) saved.push({ name: stemNames[k], blob: split.stems[k] });
+      } else if (split.mix) {
+        play = { instrument: [], backing: [extName('song', split.mix)] };
+        saved.push({ name: extName('song', split.mix), blob: split.mix });
+      } else {
+        play = { instrument: [], backing: Object.values(stemNames) };
+        for (const k of Object.keys(split.stems)) saved.push({ name: stemNames[k], blob: split.stems[k] });
+      }
+    } else {
+      label = STEMS.find((x) => x[0] === kind)[1];
+      const buf = await bufOf(split.mix);
+      const channels = channelsOf(buf);
+      if (kind !== 'all') {
+        showLoading(`Memisahkan ${label.toLowerCase()}`, 0);
+        stem = await separate(channels, buf.sampleRate, kind, (v) => showLoading(`Memisahkan ${label.toLowerCase()}`, v));
+        stem.kind = kind;
+      }
+      mixSig = await separate(channels, buf.sampleRate, 'all');
+      saved.push({ name: extName('song', split.mix), blob: split.mix });
     }
-    const meta = titleFromName(file.name);
-    const song = await autoChart(channels, buf.sampleRate, meta, (v) => showLoading('Mendengarkan ketukan lagu', v), { stem });
+    split.bufs.clear();
+    const nameSource = split.mix || split.files[0];
+    const meta = titleFromName(nameSource.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_\-. (]*(guitar|bass|drums?|vocals?|piano|keys|other|instrum\w*)\)?$/i, ''));
+    const song = await autoChart([mixSig.signal], mixSig.sampleRate, meta, (v) => showLoading('Mendengarkan ketukan lagu', v), { stem });
     song.meta.album = '';
     if (kind !== 'all') song.meta.title = `${song.meta.title} (${label})`;
     const entry = { id: uid('auto'), source: 'auto', song };
-    const ext = extOf(file.name) || 'mp3';
-    await saveEntry(entry, [{ name: `song.${ext}`, blob: file }]);
+    if (play) entry.play = play;
+    await saveEntry(entry, saved);
     hideLoading();
-    split.buf = null;
-    split.file = null;
+    split.files = [];
     $('#split-panel').hidden = true;
     toast(`Chart jadi, tempo ${Math.round(song.detectedBpm)} BPM`);
     go('songs', entry.id);
   } catch (err) {
     hideLoading();
-    setStatus(`Chart gagal dibuat: ${err.message}`, true);
+    setStatus(`Chart gagal dibuat: ${err.message || 'audio tidak bisa dibuka'}`, true);
   }
 });
 
@@ -575,9 +678,9 @@ for (const id of ['#file-import', '#dir-import']) {
   });
 }
 $('#file-audio').addEventListener('change', (e) => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (file) handleAutoChart(file);
+  if (files.length) handleAutoChart(files);
 });
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => {
@@ -767,6 +870,7 @@ function renderHelp() {
     <h3>Lagu sendiri</h3>
     <ul>
       <li><b>Import</b>: file .zip atau .sng lagu Clone Hero, atau notes.chart / notes.mid beserta audionya.</li>
+      <li><b>Stem sendiri</b>: di Auto-chart, pilih sekaligus lagu lengkap dan file stem (nama file harus mengandung guitar, bass, drums, vocals, piano, atau other). Frets dibuat dari stem yang kamu pilih.</li>
       <li><b>Auto-chart</b>: pilih file audio, pilih instrumen yang mau dijadikan frets (gitar, bass, drum, vokal, atau semua), lalu chart dibuat otomatis.</li>
       <li><b>Chart editor</b>: bikin atau rapikan chart, lalu export ke .chart.</li>
     </ul>

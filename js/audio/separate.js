@@ -174,3 +174,18 @@ export async function separate(channels, sampleRate, stem, onProgress, range) {
   }
   return { signal: out, sampleRate: sr, mono };
 }
+
+// Kenali jenis stem dari nama file hasil pemisah (mvsep, Demucs, UVR, dll).
+// Hasil: 'guitar' | 'bass' | 'drums' | 'vocals' | 'piano' | 'other' | null (lagu lengkap)
+export function stemFromName(name) {
+  const m = /(?:^|[_\-. ()])(guitar|bass|drums?|vocals?|voice|piano|keys|other|instrum\w*|no[_ ]?vocals?)(?=$|[_\-. ()])/i.exec(name.replace(/\.[a-z0-9]+$/i, ''));
+  if (!m) return null;
+  const k = m[1].toLowerCase();
+  if (k.startsWith('drum')) return 'drums';
+  if (k.startsWith('vocal') || k === 'voice') return 'vocals';
+  if (k === 'keys') return 'piano';
+  if (k.startsWith('instrum') || k.startsWith('no')) return 'other';
+  return k;
+}
+
+export const STEM_LABEL = { guitar: 'Gitar', bass: 'Bass', drums: 'Drum', vocals: 'Vokal', piano: 'Piano / keys', other: 'Lainnya' };

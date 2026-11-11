@@ -40,6 +40,15 @@ Di iPhone, pakai Share lalu **Add to Home Screen** supaya layar penuh dan data l
 
 Semua lagu yang di-import disimpan di browser (IndexedDB) pada device itu saja dan tidak di-upload ke mana pun. Pakai hanya lagu yang memang kamu punya haknya.
 
+### Stem dari pemisah instrumen
+
+Untuk auto-chart yang jauh lebih akurat, pisahkan dulu lagunya di mvsep, Demucs, UVR, atau sejenisnya. Lalu di **Tambah lagu → Auto-chart**, pilih semua filenya sekaligus:
+
+- lagu lengkap (nama bebas, misalnya `Headhunt.mp3`)
+- file stem, dengan nama yang mengandung `guitar`, `bass`, `drums`, `vocals`, `piano`, atau `other` (misalnya `headhunt_bs6stem_mt_0_guitar.mp3`)
+
+Pilih stem yang mau dijadikan frets. Kalau semua stem ikut di-upload, instrumen yang kamu mainkan di-mute saat miss.
+
 Format audio tergantung browser. MP3 dan M4A paling aman. OGG/Opus butuh iOS 18.4 atau lebih baru.
 
 ## Development

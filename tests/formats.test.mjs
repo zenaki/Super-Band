@@ -173,3 +173,15 @@ test('.sng: metadata dan file ter-unmask', async () => {
   assert.equal(sng.files[0].name, 'notes.chart');
   assert.deepEqual(await sng.files[0].read(), content);
 });
+
+test('stemFromName: kenali jenis stem dari nama file', async () => {
+  const { stemFromName } = await import('../js/audio/separate.js');
+  assert.equal(stemFromName('headhunt_bs6stem_mt_0_guitar.mp3'), 'guitar');
+  assert.equal(stemFromName('headhunt_bs6stem_mt_0_bass.mp3'), 'bass');
+  assert.equal(stemFromName('Song (Drums).wav'), 'drums');
+  assert.equal(stemFromName('song-vocals.m4a'), 'vocals');
+  assert.equal(stemFromName('track_instrumental.mp3'), 'other');
+  assert.equal(stemFromName('Headhunt.mp3'), null);
+  assert.equal(stemFromName('Bassline Junkie.mp3'), null);
+  assert.equal(stemFromName('bass.ogg'), 'bass');
+});

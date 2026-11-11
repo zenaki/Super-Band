@@ -3,6 +3,15 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-11
+
+### Added
+
+- **Upload multi-file untuk satu lagu** di Auto-chart: pilih sekaligus lagu lengkap dan file stem hasil pemisah (mvsep, Demucs, UVR, dan sejenisnya). Jenis stem dikenali dari nama file: `guitar`, `bass`, `drums`, `vocals`, `piano`, `other`.
+- Frets dibuat langsung dari file stem yang dipilih, tempo tetap dari lagu lengkap.
+- Kalau stem yang di-upload lengkap (4 stem atau lebih, atau ada `other`), yang diputar saat main adalah stem-stemnya, dan instrumen yang dimainkan di-mute saat miss.
+- Tanpa file lagu lengkap pun bisa: yang diputar gabungan semua stem.
+
 ## [1.2.0] - 2026-11-11
 
 ### Added

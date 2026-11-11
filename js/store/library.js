@@ -152,6 +152,12 @@ export async function loadAudio(entry, part, onProgress) {
   const role = part === 'coop' ? 'guitar' : part;
   let inst = files.filter((f) => stemRole(f.name) === role);
   let rest = files.filter((f) => stemRole(f.name) !== role);
+  if (entry.play) {
+    // lagu dari upload multi-file: pembagian stem sudah ditentukan saat chart dibuat
+    const all = entry.files || [];
+    inst = all.filter((f) => entry.play.instrument.includes(f.name));
+    rest = all.filter((f) => entry.play.backing.includes(f.name));
+  }
   if (!rest.length) {
     rest = inst;
     inst = [];
