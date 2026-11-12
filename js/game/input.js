@@ -1,6 +1,7 @@
 // Input terpadu: touch, keyboard, gamepad / guitar controller.
 
 import { settings } from '../store/settings.js';
+import { tapHaptic } from './haptics.js';
 
 export const GAMEPAD_PRESETS = {
   // gamepad biasa: LT LB RB RT A
@@ -102,6 +103,7 @@ export class Input {
     }
     this.pointers.set(e.pointerId, lane);
     this.setLane(lane, true, t);
+    if (settings.hapticTap) tapHaptic();
   }
 
   pointerMove(e) {
@@ -117,6 +119,7 @@ export class Input {
     this.setLane(cur, false, t);
     this.pointers.set(e.pointerId, lane);
     this.setLane(lane, true, t);
+    if (settings.hapticTap) tapHaptic();
   }
 
   pointerUp(e) {

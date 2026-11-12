@@ -3,6 +3,17 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-12
+
+### Added
+
+- Getar kecil setiap tombol fret di layar ditekan (termasuk saat jari geser ke lane lain). Bisa dimatikan di Settings, "Getar saat tombol ditekan".
+- iPhone memakai haptic sistem (iOS 18 atau lebih baru), Android memakai Vibration API.
+
+### Changed
+
+- "Getar saat miss" diberi keterangan bahwa fitur itu hanya untuk Android.
+
 ## [1.4.0] - 2026-11-11
 
 ### Changed

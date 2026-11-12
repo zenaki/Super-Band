@@ -4,6 +4,7 @@ import { VERSION } from './version.js';
 import { audio, sfx } from './audio/player.js';
 import { Highway } from './game/highway.js';
 import { Session } from './game/session.js';
+import { missHaptic } from './game/haptics.js';
 import { Engine, Bot, STAR_CUTOFFS } from './core/engine.js';
 import { compileTrack, listCharts, DIFF_LABEL, PART_LABEL, DIFFS } from './core/chart.js';
 import { formatScore, formatTime, hashString, uid, extOf } from './core/util.js';
@@ -356,7 +357,7 @@ function gameEvent(type, data) {
   else if (type === 'superStart') feedback('Super mode!');
   else if (type === 'superReady') feedback('Super siap!');
   else if ((type === 'miss' || type === 'ghost') && data.lost >= 30) feedback('Ambyar!');
-  if (settings.haptics && navigator.vibrate && type === 'miss') navigator.vibrate(18);
+  if (settings.haptics && type === 'miss') missHaptic();
 }
 
 function pauseGame() {
@@ -718,7 +719,8 @@ function renderSettings() {
       <button class="btn" data-go="calibrate">Kalibrasi audio</button>
       ${range('musicVolume', 'Volume musik', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
       ${range('sfxVolume', 'Volume efek', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
-      ${toggle('haptics', 'Getar saat miss', 'Hanya di device yang mendukung.')}
+      ${toggle('hapticTap', 'Getar saat tombol ditekan', 'Getar kecil tiap tap tombol fret di layar. Di iPhone butuh iOS 18 atau lebih baru.')}
+      ${toggle('haptics', 'Getar saat miss', 'Android saja, iPhone tidak mendukung.')}
     </div>
     <div class="panel"><h3>Keyboard dan gamepad</h3>
       <div class="label">Tombol fret (tap untuk ganti)</div>

@@ -15,6 +15,7 @@ export const DEFAULTS = {
   gamepadPreset: 'pad',
   tapHighwayForSuper: true,
   haptics: true,
+  hapticTap: true,
   keys: {
     frets: [['KeyA', 'Digit1'], ['KeyS', 'Digit2'], ['KeyD', 'Digit3'], ['KeyF', 'Digit4'], ['KeyG', 'Digit5']],
     strum: ['ArrowUp', 'ArrowDown', 'Enter'],
