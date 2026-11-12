@@ -3,6 +3,12 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-11-12
+
+### Fixed
+
+- Upload ke collection gagal dengan "GitHub error 409: Git Repository is empty" kalau repo collection masih kosong. Game sekarang membuat commit pertama (README) dulu.
+
 ## [1.6.0] - 2026-11-12
 
 ### Added

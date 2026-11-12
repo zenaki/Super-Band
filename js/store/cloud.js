@@ -110,7 +110,17 @@ export class GitHub {
 
   // Satu commit berisi banyak perubahan. changes: [{ path, data: Uint8Array|string|null }] (null = hapus)
   async commit(full, message, changes, onProgress) {
-    const ref = await this.ref(full);
+    let ref = await this.ref(full);
+    if (!ref) {
+      // Repo kosong: Git Data API (blob/tree) ditolak GitHub dengan 409 sampai ada commit pertama.
+      // Contents API boleh dipakai di repo kosong, jadi buat README dulu lewat situ.
+      await this.req(`/repos/${full}/contents/README.md`, {
+        method: 'PUT',
+        body: JSON.stringify({ message: 'init collection', content: b64(enc.encode('# Super Band collection\n\nIsi repo ini dikelola oleh game Super Band.\n')) }),
+      });
+      ref = await this.ref(full);
+      if (!ref) throw new Error('Repo collection belum bisa diinisialisasi, coba lagi sebentar.');
+    }
     const tree = [];
     let done = 0;
     for (const ch of changes) {
