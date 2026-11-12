@@ -51,6 +51,22 @@ Pilih stem yang mau dijadikan frets. Kalau semua stem ikut di-upload, instrumen 
 
 Format audio tergantung browser. MP3 dan M4A paling aman. OGG/Opus butuh iOS 18.4 atau lebih baru.
 
+## Collection pribadi (sinkron antar device)
+
+Lagu bisa disimpan di repo GitHub **private** milik sendiri, lalu dibuka dari device mana pun dengan username dan password.
+
+Setup sekali:
+
+1. Buat repo GitHub baru yang **private** dan kosong, misalnya `super-band-library`.
+2. Buat **fine-grained personal access token** (GitHub, Settings, Developer settings, Personal access tokens, Fine-grained tokens):
+   - Repository access: repo library tadi dan `Super-Band`
+   - Permissions: **Contents: Read and write**
+3. Di game: Settings, Collection pribadi, **Setup pertama kali**. Isi repo, token, username, dan password (minimal 12 karakter).
+
+Di device lain cukup **Login** dengan username dan password itu (aktif 1–2 menit setelah setup).
+
+Cara kerjanya: token disimpan terenkripsi dengan password di `vault/<username>.json` di repo ini. Isi file itu publik tapi tidak bisa dibuka tanpa password, jadi pakai password yang panjang dan tidak dipakai di tempat lain. Batas GitHub: 100 MB per file dan sekitar 1–5 GB per repo.
+
 ## Development
 
 Project ini murni static: HTML, CSS, dan ES modules.

@@ -300,3 +300,5 @@ select { background: var(--aspal); border: 2px solid var(--garis); border-radius
   .grade.show, .plus.show { animation-duration: 0.01s; }
   .feedback.show { opacity: 1; }
 }
+
+.cloud-tag { font-weight: 700; color: var(--tosca); }

@@ -3,6 +3,17 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-12
+
+### Added
+
+- **Collection pribadi** dengan login username dan password, supaya lagu yang ditambahkan muncul di semua device.
+  - Lagu (chart + file audio) disimpan di repo GitHub **private** milik sendiri, lewat GitHub API langsung dari browser. Tidak butuh server.
+  - Login: token GitHub dienkripsi dengan password (PBKDF2-SHA256 600.000 iterasi + AES-GCM) dan disimpan di `vault/<username>.json` di repo game. Password minimal 12 karakter.
+  - Lagu yang belum pernah dibuka di sebuah device ditandai "belum diunduh"; chart diambil saat dipilih, audio saat dimainkan, lalu disimpan di device.
+  - Lagu baru otomatis di-upload di belakang layar. Ada tombol untuk meng-upload lagu lama yang sudah ada di device.
+  - Menghapus lagu collection menghapusnya dari semua device.
+
 ## [1.5.1] - 2026-11-12
 
 ### Fixed

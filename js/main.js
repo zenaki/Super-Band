@@ -9,8 +9,9 @@ import { Engine, Bot, STAR_CUTOFFS } from './core/engine.js';
 import { compileTrack, listCharts, DIFF_LABEL, PART_LABEL, DIFFS } from './core/chart.js';
 import { formatScore, formatTime, hashString, uid, extOf } from './core/util.js';
 import { settings, saveSettings, resetSettings, getScore, bestStars, submitScore, clearScores, DEFAULTS } from './store/settings.js';
-import { builtins, listEntries, loadAudio, importFiles, saveEntry, deleteEntry, decodeBlob, getArtUrl, titleFromName } from './store/library.js';
+import { builtins, listEntries, loadAudio, importFiles, saveEntry, deleteEntry, decodeBlob, getArtUrl, titleFromName, pullEntry, pushToCloud, cloud } from './store/library.js';
 import { autoChart } from './audio/analysis.js';
+import { GAME_REPO } from './store/cloud.js';
 import { separate, STEMS, stemFromName, STEM_LABEL } from './audio/separate.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -130,9 +131,10 @@ async function renderSongs(selectId) {
       const m = e.song.meta;
       const best = bestStars(e.id);
       const tag = e.source === 'builtin' ? 'Original' : e.source === 'auto' ? 'Auto-chart' : e.source === 'custom' ? 'Chart sendiri' : 'Import';
+      const where = e.remote ? ', belum diunduh' : '';
       return `<li><button class="song${e === app.selected ? ' is-selected' : ''}" data-id="${esc(e.id)}">
         <span class="cover" style="${coverStyle(e)}" data-cover="${esc(e.id)}">${esc((m.title || '?')[0].toUpperCase())}</span>
-        <span><span class="song-title">${esc(m.title)}</span><br><span class="song-sub">${esc(m.artist)}, ${tag}</span></span>
+        <span><span class="song-title">${esc(m.title)}</span><br><span class="song-sub">${esc(m.artist)}, ${tag}${e.cloud ? ' <b class="cloud-tag">collection</b>' : ''}${where}</span></span>
         <span class="song-stars${best && best.gold ? ' is-gold' : ''}">${best ? '★'.repeat(best.stars) : ''}</span>
       </button></li>`;
     })
@@ -150,12 +152,26 @@ async function renderSongs(selectId) {
   renderDetail();
 }
 
-$('#song-list').addEventListener('click', (e) => {
+$('#song-list').addEventListener('click', async (e) => {
   const btn = e.target.closest('.song');
   if (!btn) return;
   app.selected = app.entries.find((x) => x.id === btn.dataset.id);
   for (const el of document.querySelectorAll('.song')) el.classList.toggle('is-selected', el === btn);
   sfx.click();
+  if (app.selected && app.selected.remote) {
+    const remote = app.selected;
+    showLoading('Mengambil chart dari collection', 0.3);
+    try {
+      const full = await pullEntry(remote);
+      app.entries[app.entries.indexOf(remote)] = full;
+      if (app.selected === remote) app.selected = full;
+      hideLoading();
+      return renderSongs(full.id);
+    } catch (err) {
+      hideLoading();
+      toast(err.message, 5000);
+    }
+  }
   renderDetail();
 });
 
@@ -208,7 +224,7 @@ $('#song-detail').addEventListener('click', async (e) => {
   else if (t.id === 'btn-play') return startGame();
   else if (t.id === 'btn-edit') return go('editor', { entry: app.selected, part: app.part, diff: app.diff });
   else if (t.id === 'btn-delete') {
-    if (!confirm(`Hapus "${app.selected.song.meta.title}" dari library?`)) return;
+    if (!confirm(`Hapus "${app.selected.song.meta.title}" dari library${app.selected.cloud ? ' dan dari collection di semua device' : ''}?`)) return;
     await deleteEntry(app.selected);
     app.selected = null;
     toast('Lagu dihapus');
@@ -734,6 +750,7 @@ function renderSettings() {
       <small class="hint">Strum: panah atas/bawah. Super: Space. Pause: Esc.</small>
       ${select('gamepadPreset', 'Layout gamepad', [['pad', 'Gamepad: LT LB RB RT A'], ['guitar', 'Guitar controller']])}
     </div>
+    <div class="panel" id="cloud-panel">${cloudPanelHtml()}</div>
     <div class="panel"><h3>Data</h3>
       <button class="btn" id="btn-reset-settings">Kembalikan settings awal</button>
       <button class="btn btn-danger" id="btn-clear-scores">Hapus semua skor</button>
@@ -786,6 +803,115 @@ window.addEventListener('keydown', (e) => {
   }
   waitingKey = null;
   renderSettings();
+});
+
+// ---------------------------------------------------------------------
+// collection pribadi
+
+let cloudMode = 'login';
+
+function cloudPanelHtml() {
+  if (cloud.loggedIn) {
+    return `<h3>Collection pribadi</h3>
+      <p>Login sebagai <b>${esc(cloud.session.username)}</b>. Lagu yang kamu tambahkan tersimpan di repo private <b>${esc(cloud.session.repo)}</b> dan muncul di semua device yang login dengan akun ini.</p>
+      <button class="btn" id="cloud-upload-all">Upload lagu lama di device ini ke collection</button>
+      <button class="btn btn-quiet" id="cloud-logout">Logout dari device ini</button>
+      <div class="status" id="cloud-status"></div>`;
+  }
+  if (cloudMode === 'setup') {
+    return `<h3>Setup collection pribadi</h3>
+      <p>Cukup sekali di satu device. Siapkan dulu repo GitHub <b>private</b> kosong untuk menyimpan lagu, lalu buat <b>fine-grained token</b> di GitHub, Settings, Developer settings, dengan akses ke repo itu dan ke <b>${esc(GAME_REPO)}</b>, izin <b>Contents: Read and write</b>.</p>
+      <form class="ed-form" id="cloud-setup">
+        <input type="text" name="repo" placeholder="Repo private, contoh: zenaki/super-band-library" autocomplete="off" required>
+        <input type="password" name="token" placeholder="GitHub token (github_pat_...)" autocomplete="off" required>
+        <input type="text" name="username" placeholder="Username baru" autocomplete="username" required>
+        <input type="password" name="password" placeholder="Password baru, minimal 12 karakter" autocomplete="new-password" required>
+        <input type="password" name="password2" placeholder="Ulangi password" autocomplete="new-password" required>
+        <button class="btn btn-primary" type="submit">Simpan dan login</button>
+      </form>
+      <button class="btn btn-quiet" id="cloud-to-login">Sudah pernah setup? Login</button>
+      <div class="status" id="cloud-status"></div>`;
+  }
+  return `<h3>Collection pribadi</h3>
+    <p>Login supaya lagu yang kamu tambahkan selalu ada di device mana pun.</p>
+    <form class="ed-form" id="cloud-login">
+      <input type="text" name="username" placeholder="Username" autocomplete="username" required>
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+      <button class="btn btn-primary" type="submit">Login</button>
+    </form>
+    <button class="btn btn-quiet" id="cloud-to-setup">Belum punya akun? Setup pertama kali</button>
+    <div class="status" id="cloud-status"></div>`;
+}
+
+function refreshCloudPanel(status, error = false) {
+  const panel = $('#cloud-panel');
+  if (!panel) return;
+  panel.innerHTML = cloudPanelHtml();
+  if (status) {
+    const el = $('#cloud-status');
+    el.textContent = status;
+    el.classList.toggle('is-error', error);
+  }
+}
+
+function cloudStatus(text, error = false) {
+  const el = $('#cloud-status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-error', error);
+}
+
+$('#settings-body').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    if (e.target.id === 'cloud-login') {
+      cloudStatus('Membuka akun');
+      await cloud.login(f.get('username'), f.get('password'));
+      refreshCloudPanel('Login berhasil. Collection kamu muncul di daftar lagu.');
+    } else if (e.target.id === 'cloud-setup') {
+      if (f.get('password') !== f.get('password2')) throw new Error('Kedua password tidak sama.');
+      cloudStatus('Mengecek token dan repo');
+      await cloud.setup({ username: f.get('username'), password: f.get('password'), token: f.get('token'), repo: f.get('repo') });
+      refreshCloudPanel('Setup selesai. Di device lain, cukup login dengan username dan password ini (butuh 1–2 menit sampai aktif).');
+    }
+  } catch (err) {
+    cloudStatus(err.message, true);
+    btn.disabled = false;
+  }
+});
+
+$('#settings-body').addEventListener('click', async (e) => {
+  const id = e.target.id;
+  if (id === 'cloud-to-setup' || id === 'cloud-to-login') {
+    cloudMode = id === 'cloud-to-setup' ? 'setup' : 'login';
+    refreshCloudPanel();
+  } else if (id === 'cloud-logout') {
+    cloud.logout();
+    cloudMode = 'login';
+    refreshCloudPanel('Logout. Lagu yang sudah diunduh tetap ada di device ini.');
+  } else if (id === 'cloud-upload-all') {
+    const all = (await listEntries()).filter((x) => x.source !== 'builtin' && !x.cloud);
+    if (!all.length) return cloudStatus('Semua lagu di device ini sudah ada di collection.');
+    cloudStatus(`Meng-upload ${all.length} lagu di belakang layar`);
+    for (const entry of all) pushToCloud(entry, null);
+  }
+});
+
+window.addEventListener('cloud-sync', (e) => {
+  const d = e.detail;
+  if (d.state === 'start') toast(`Upload ke collection: ${d.title}`, 2000);
+  else if (d.state === 'progress') cloudStatus(`Upload ${d.title}: ${d.message}%`);
+  else if (d.state === 'done') {
+    toast(`"${d.title}" tersimpan di collection`);
+    cloudStatus(`"${d.title}" tersimpan di collection`);
+    if (app.screen === 'songs') renderSongs(app.selected && app.selected.id);
+  } else if (d.state === 'error') {
+    toast(d.message, 6000);
+    cloudStatus(d.message, true);
+  }
 });
 
 // ---------------------------------------------------------------------

@@ -8,7 +8,8 @@ import { SR } from '../audio/synth.js';
 import { parseChart, parseIni, applyIni } from '../core/chartFormat.js';
 import { parseMidi } from '../core/midiFormat.js';
 import { readZip, readSng } from '../core/archive.js';
-import { listCharts, normalizeSong } from '../core/chart.js';
+import { listCharts, normalizeSong, createSong } from '../core/chart.js';
+import { cloud } from './cloud.js';
 import { uid, extOf, stripExt, baseName, dirName, decodeText } from '../core/util.js';
 
 export const AUDIO_EXT = ['ogg', 'opus', 'mp3', 'wav', 'm4a', 'aac', 'flac', 'webm'];
@@ -37,11 +38,79 @@ export async function listEntries() {
   } catch (err) {
     user = [];
   }
+  if (cloud.loggedIn) {
+    let index = null;
+    try {
+      index = await cloud.fetchIndex();
+    } catch (err) {
+      cloudEvent('error', null, `Collection tidak bisa dibuka: ${err.message}`);
+    }
+    if (index) {
+      const local = new Map(user.map((e) => [e.id, e]));
+      for (const s of index) {
+        const e = local.get(s.id);
+        if (e) e.cloud = true;
+        else {
+          // lagu yang ada di collection tapi belum pernah dibuka di device ini
+          user.push({ id: s.id, source: s.source, addedAt: s.addedAt, files: s.files, cloud: true, remote: true, song: createSong({ title: s.title, artist: s.artist }) });
+        }
+      }
+    }
+  }
   user.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
   return [...builtins(), ...user];
 }
 
-export async function saveEntry(entry, files) {
+// ---- sinkron collection pribadi --------------------------------------
+
+function cloudEvent(state, entry, message) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('cloud-sync', { detail: { state, title: entry ? entry.song.meta.title : '', message } }));
+}
+
+let queue = Promise.resolve();
+
+// Upload lagu ke collection di belakang layar. Hasilnya dikabarkan lewat event 'cloud-sync'.
+export function pushToCloud(entry, files) {
+  if (!cloud.loggedIn || entry.source === 'builtin') return Promise.resolve();
+  queue = queue.then(async () => {
+    try {
+      let list = files;
+      if (!list) {
+        // file belum ada di collection: ambil dari penyimpanan lokal
+        const index = await cloud.fetchIndex(true);
+        if (!index.some((x) => x.id === entry.id)) {
+          list = [];
+          for (const f of entry.files || []) {
+            const blob = await db.get('files', `${entry.id}/${f.name}`);
+            if (blob) list.push({ name: f.name, blob });
+          }
+        }
+      }
+      cloudEvent('start', entry);
+      await cloud.upload(entry, list, (v) => cloudEvent('progress', entry, Math.round(v * 100)));
+      entry.cloud = true;
+      await db.put('songs', entry.id, { ...entry, remote: undefined });
+      cloudEvent('done', entry);
+    } catch (err) {
+      cloudEvent('error', entry, `Gagal upload "${entry.song.meta.title}" ke collection: ${err.message}`);
+    }
+  });
+  return queue;
+}
+
+// Ambil data chart lagu dari collection ke device ini (file audio diunduh saat dimainkan).
+export async function pullEntry(entry) {
+  const full = await cloud.fetchEntry(entry.id);
+  if (!full) throw new Error('Lagu ini tidak ditemukan di collection.');
+  full.cloud = true;
+  delete full.remote;
+  normalizeSong(full.song);
+  await db.put('songs', full.id, full);
+  return full;
+}
+
+export async function saveEntry(entry, files, opts = {}) {
   requestPersist();
   normalizeSong(entry.song);
   if (!entry.addedAt) entry.addedAt = Date.now();
@@ -49,23 +118,34 @@ export async function saveEntry(entry, files) {
     entry.files = files.map((f) => ({ name: f.name, size: f.blob.size }));
     for (const f of files) await db.put('files', `${entry.id}/${f.name}`, f.blob);
   }
+  delete entry.remote;
   await db.put('songs', entry.id, entry);
+  if (opts.cloud !== false) pushToCloud(entry, files || null);
   return entry;
 }
 
 export async function deleteEntry(entry) {
+  if (entry.cloud && cloud.loggedIn) await cloud.remove(entry);
   for (const f of entry.files || []) await db.del('files', `${entry.id}/${f.name}`);
   await db.del('songs', entry.id);
 }
 
+const MIME = { mp3: 'audio/mpeg', ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', webm: 'audio/webm', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+
 export async function getFile(entry, name) {
-  return db.get('files', `${entry.id}/${name}`);
+  const local = await db.get('files', `${entry.id}/${name}`);
+  if (local || !entry.cloud || !cloud.loggedIn) return local;
+  const bytes = await cloud.fetchFile(entry.id, name);
+  if (!bytes) return null;
+  const blob = new Blob([bytes], { type: MIME[extOf(name)] || 'application/octet-stream' });
+  await db.put('files', `${entry.id}/${name}`, blob);
+  return blob;
 }
 
 export async function getArtUrl(entry) {
   const f = (entry.files || []).find((x) => /^album\./i.test(x.name));
   if (!f) return null;
-  const blob = await getFile(entry, f.name);
+  const blob = entry.remote ? null : await getFile(entry, f.name).catch(() => null);
   return blob ? URL.createObjectURL(blob) : null;
 }
 
@@ -284,3 +364,5 @@ export async function importFiles(fileList, onProgress) {
   }
   return result;
 }
+
+export { cloud };
