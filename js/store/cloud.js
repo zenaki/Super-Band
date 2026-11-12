@@ -10,6 +10,9 @@ const API = 'https://api.github.com';
 const SESSION_KEY = 'superband.cloud.v1';
 const PBKDF2_ITER = 600000;
 const MAX_FILE = 95 * 1024 * 1024; // batas GitHub 100 MB per file
+// File besar dipecah per 8 MB: API blob GitHub menolak request yang terlalu besar
+// ("input was too large"), dan potongan juga melewati batas 100 MB per file.
+export const CHUNK = 8 * 1024 * 1024;
 
 // ---------------------------------------------------------------------
 // kripto
@@ -336,12 +339,25 @@ export const cloud = {
     return this.client().readJson(this.session.repo, `songs/${this.dirOf(id)}/entry.json`);
   },
 
-  async fetchFile(id, name) {
+  async fetchFile(id, name, onProgress) {
     await this.fetchIndex();
-    return this.client().read(this.session.repo, `songs/${this.dirOf(id)}/${name}`);
+    const s = (this.index || []).find((x) => x.id === id);
+    const info = s && (s.files || []).find((f) => f.name === name);
+    const base = `songs/${this.dirOf(id)}/${name}`;
+    if (!info || !info.parts) return this.client().read(this.session.repo, base);
+    const out = new Uint8Array(info.size);
+    let pos = 0;
+    for (let k = 0; k < info.parts; k++) {
+      const part = await this.client().read(this.session.repo, partPath(base, k));
+      if (!part) throw new Error(`Potongan ${k + 1} dari ${name} hilang di collection.`);
+      out.set(part, pos);
+      pos += part.length;
+      if (onProgress) onProgress((k + 1) / info.parts);
+    }
+    return out;
   },
 
-  summary(entry, dir) {
+  summary(entry, dir, files) {
     return {
       id: entry.id,
       dir,
@@ -349,7 +365,7 @@ export const cloud = {
       title: entry.song.meta.title,
       artist: entry.song.meta.artist,
       addedAt: entry.addedAt,
-      files: entry.files || [],
+      files: files || entry.files || [],
     };
   },
 
@@ -368,8 +384,24 @@ export const cloud = {
     delete meta.cloud;
     delete meta.remote;
     changes.push({ path: `songs/${dir}/entry.json`, data: JSON.stringify(meta) });
-    for (const f of files || []) changes.push({ path: `songs/${dir}/${f.name}`, data: new Uint8Array(await f.blob.arrayBuffer()) });
-    const next = [this.summary(entry, dir), ...others];
+    // info file di index: ukuran + jumlah potongan
+    const known = new Map(((existing && existing.files) || []).map((f) => [f.name, f]));
+    for (const f of files || []) {
+      const path = `songs/${dir}/${f.name}`;
+      const size = f.blob.size;
+      if (size <= CHUNK) {
+        changes.push({ path, data: new Uint8Array(await f.blob.arrayBuffer()) });
+        known.set(f.name, { name: f.name, size });
+      } else {
+        const parts = Math.ceil(size / CHUNK);
+        for (let k = 0; k < parts; k++) {
+          changes.push({ path: partPath(path, k), data: new Uint8Array(await f.blob.slice(k * CHUNK, Math.min(size, (k + 1) * CHUNK)).arrayBuffer()) });
+        }
+        known.set(f.name, { name: f.name, size, parts });
+      }
+    }
+    const fileInfo = (entry.files || []).map((f) => known.get(f.name) || { name: f.name, size: f.size });
+    const next = [this.summary(entry, dir, fileInfo), ...others];
     changes.push({ path: 'songs/index.json', data: indexJson(next) });
     const label = songLabel(entry.song.meta.artist, entry.song.meta.title);
     await this.client().commit(this.session.repo, `${existing ? 'ubah' : 'tambah'} lagu: ${label}`, changes, onProgress);
@@ -386,7 +418,11 @@ export const cloud = {
     if (!found) return;
     const dir = found.dir || found.id;
     const changes = [{ path: `songs/${dir}/entry.json`, data: null }];
-    for (const f of found.files || []) changes.push({ path: `songs/${dir}/${f.name}`, data: null });
+    for (const f of found.files || []) {
+      const path = `songs/${dir}/${f.name}`;
+      if (f.parts) for (let k = 0; k < f.parts; k++) changes.push({ path: partPath(path, k), data: null });
+      else changes.push({ path, data: null });
+    }
     const next = index.filter((s) => s.id !== entry.id);
     changes.push({ path: 'songs/index.json', data: indexJson(next) });
     await this.client().commit(this.session.repo, `hapus lagu: ${songLabel(found.artist, found.title)}`, changes);
@@ -423,4 +459,8 @@ function uniqueDir(label, taken) {
 
 function indexJson(songs) {
   return `${JSON.stringify({ v: 2, songs }, null, 1)}\n`;
+}
+
+function partPath(path, k) {
+  return `${path}.part${String(k + 1).padStart(3, '0')}`;
 }

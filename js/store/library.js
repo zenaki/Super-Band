@@ -85,7 +85,8 @@ export function pushToCloud(entry, files) {
         const index = await cloud.fetchIndex(true);
         if (!index.some((x) => x.id === entry.id)) {
           list = [];
-          for (const f of entry.files || []) {
+          entry.files = (entry.files || []).filter((f) => !/^(video|background)\b/i.test(f.name));
+          for (const f of entry.files) {
             const blob = await db.get('files', `${entry.id}/${f.name}`);
             if (blob) list.push({ name: f.name, blob });
           }
@@ -175,7 +176,7 @@ function stemRole(name) {
   if (stem === 'rhythm') return 'rhythm';
   if (stem === 'bass') return 'bass';
   if (stem === 'keys') return 'keys';
-  if (stem === 'preview' || stem === 'crowd') return null;
+  if (stem === 'preview' || stem === 'crowd' || stem === 'video' || stem.startsWith('video')) return null;
   return 'backing';
 }
 
@@ -294,6 +295,7 @@ async function importFolder(items, iniOverride, label) {
     const name = baseName(it.path);
     const isArt = IMAGE_EXT.includes(ext) && /^album\./i.test(name);
     if (!AUDIO_EXT.includes(ext) && !isArt) continue;
+    if (/^(video|background)\b/i.test(stripExt(name))) continue; // video background tidak dipakai
     const data = await it.read();
     const type = isArt ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : `audio/${ext === 'mp3' ? 'mpeg' : ext === 'opus' ? 'ogg' : ext}`;
     files.push({ name: isArt ? `album.${ext}` : name.toLowerCase(), blob: new Blob([data], { type }) });

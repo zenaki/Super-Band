@@ -65,7 +65,7 @@ Setup sekali:
 
 Di device lain cukup **Login** dengan username dan password itu (aktif 1–2 menit setelah setup).
 
-Cara kerjanya: token disimpan terenkripsi dengan password di `vault/<username>.json` di repo ini. Isi file itu publik tapi tidak bisa dibuka tanpa password, jadi pakai password yang panjang dan tidak dipakai di tempat lain. Batas GitHub: 100 MB per file dan sekitar 1–5 GB per repo.
+Cara kerjanya: token disimpan terenkripsi dengan password di `vault/<username>.json` di repo ini. Isi file itu publik tapi tidak bisa dibuka tanpa password, jadi pakai password yang panjang dan tidak dipakai di tempat lain. File di atas 8 MB disimpan dalam beberapa potongan. Batas GitHub yang tetap berlaku: sekitar 1–5 GB per repo. Video background di zip Clone Hero tidak di-import.
 
 ## Development
 

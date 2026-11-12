@@ -3,6 +3,13 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.6.4] - 2026-11-12
+
+### Fixed
+
+- Upload gagal dengan "Sorry, your input was too large to process" untuk file audio besar. File di atas 8 MB sekarang dipecah jadi beberapa potongan (`song.opus.part001`, `.part002`, ...) dan disatukan lagi saat diunduh. Ini juga menghilangkan batas 100 MB per file.
+- File `video.webm` (video background di zip Clone Hero) ikut ter-import dan dianggap audio. Video sekarang dilewati saat import, saat upload ke collection, dan saat memutar lagu.
+
 ## [1.6.3] - 2026-11-12
 
 ### Fixed
