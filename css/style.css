@@ -206,11 +206,13 @@ body.dim-stage #stage { opacity: 0.38; }
   font-weight: 700; font-size: 15px; color: var(--redup); cursor: pointer; }
 .super-btn:not(:disabled) { color: var(--aspal); background: var(--tosca); border-color: var(--aspal); box-shadow: 0 0 16px var(--tosca); animation: nudge 0.7s ease-in-out infinite alternate; }
 @keyframes nudge { to { transform: scale(1.08); } }
+.feedback:empty { display: none; }
 .feedback { position: absolute; left: 0; right: 0; top: 17%; text-align: center; pointer-events: none;
   font: 400 34px/1 var(--display); color: var(--kunyit); text-shadow: 3px 3px 0 var(--aspal); opacity: 0; }
 .feedback.show { animation: pop 0.9s ease-out; }
 @keyframes pop { 0% { opacity: 0; transform: scale(0.7) rotate(-4deg); } 15% { opacity: 1; transform: scale(1.1) rotate(-4deg); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(1) rotate(-4deg) translateY(-14px); } }
-.countdown { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font: 400 120px/1 var(--display); color: var(--kunyit);
+.countdown:empty { display: none; }
+.countdown { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; transform: translateZ(0); font: 400 120px/1 var(--display); color: var(--kunyit);
   text-shadow: 5px 5px 0 var(--sambal); }
 .judge { position: absolute; left: 0; right: 0; top: 46%; text-align: center; pointer-events: none; }
 .grade { font: 400 38px/1 var(--display); text-shadow: 3px 3px 0 var(--aspal); opacity: 0; }

@@ -320,8 +320,14 @@ function updateHud(t, eng) {
   setText('count', hud.count, lead > 0 && lead <= 3 ? String(lead) : '');
 }
 
+let feedbackTimer = 0;
 function feedback(text) {
   const el = hud.feedback;
+  clearTimeout(feedbackTimer);
+  feedbackTimer = setTimeout(() => {
+    el.textContent = '';
+    el.classList.remove('show');
+  }, 950);
   el.textContent = text;
   el.classList.remove('show');
   void el.offsetWidth;

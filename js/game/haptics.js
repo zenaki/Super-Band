@@ -25,7 +25,13 @@ const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate 
 export function tapHaptic() {
   try {
     if (canVibrate) navigator.vibrate(8);
-    else iosSwitch().click();
+    else {
+      const lbl = iosSwitch();
+      const active = document.activeElement;
+      lbl.click();
+      // jangan biarkan fokus pindah ke switch tersembunyi
+      if (document.activeElement !== active && active && active.focus) active.focus({ preventScroll: true });
+    }
   } catch (err) {
     /* device tidak mendukung */
   }

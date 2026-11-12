@@ -3,6 +3,14 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-11-12
+
+### Fixed
+
+- Tombol fret kadang "nyangkut" tertekan setelah jari diangkat di iPhone. Layar sentuh sekarang memakai touch event dan setiap event dicocokkan ulang dengan jari yang masih menempel, jadi lane yang jarinya sudah lepas selalu dilepas.
+- Semua lane dilepas saat browser kehilangan fokus.
+- Bekas angka hitung mundur 3, 2, 1 dan tulisan feedback tertinggal di layar iPhone. Elemennya sekarang benar-benar disembunyikan saat kosong.
+
 ## [1.5.0] - 2026-11-12
 
 ### Added

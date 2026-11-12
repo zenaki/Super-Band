@@ -27,6 +27,12 @@ export class Input {
     this._kd = (e) => this.key(e, true);
     this._ku = (e) => this.key(e, false);
     this._ctx = (e) => e.preventDefault();
+    this.touches = new Map(); // touch.identifier -> lane
+    this.useTouch = typeof window !== 'undefined' && 'ontouchstart' in window;
+    this._ts = (e) => this.touchStart(e);
+    this._tm = (e) => this.touchMove(e);
+    this._te = (e) => this.touchEnd(e);
+    this._blur = () => this.releaseAll();
   }
 
   attach() {
@@ -38,6 +44,14 @@ export class Input {
     s.addEventListener('pointerup', this._pu);
     s.addEventListener('pointercancel', this._pu);
     s.addEventListener('contextmenu', this._ctx);
+    if (this.useTouch) {
+      const opt = { passive: false };
+      s.addEventListener('touchstart', this._ts, opt);
+      s.addEventListener('touchmove', this._tm, opt);
+      s.addEventListener('touchend', this._te, opt);
+      s.addEventListener('touchcancel', this._te, opt);
+    }
+    window.addEventListener('blur', this._blur);
     window.addEventListener('keydown', this._kd);
     window.addEventListener('keyup', this._ku);
     this.timer = setInterval(() => this.pollPads(), 4);
@@ -52,6 +66,11 @@ export class Input {
     s.removeEventListener('pointerup', this._pu);
     s.removeEventListener('pointercancel', this._pu);
     s.removeEventListener('contextmenu', this._ctx);
+    s.removeEventListener('touchstart', this._ts);
+    s.removeEventListener('touchmove', this._tm);
+    s.removeEventListener('touchend', this._te);
+    s.removeEventListener('touchcancel', this._te);
+    window.removeEventListener('blur', this._blur);
     window.removeEventListener('keydown', this._kd);
     window.removeEventListener('keyup', this._ku);
     clearInterval(this.timer);
@@ -65,6 +84,7 @@ export class Input {
       this.laneCount[lane] = 0;
     }
     this.pointers.clear();
+    this.touches.clear();
     this.keyDown.clear();
     this.padState = {};
   }
@@ -88,6 +108,7 @@ export class Input {
   }
 
   pointerDown(e) {
+    if (this.useTouch && e.pointerType === 'touch') return;
     e.preventDefault();
     const [x, y] = this.local(e);
     const lane = this.highway.laneAt(x, y);
@@ -107,6 +128,7 @@ export class Input {
   }
 
   pointerMove(e) {
+    if (this.useTouch && e.pointerType === 'touch') return;
     const cur = this.pointers.get(e.pointerId);
     if (cur === undefined) return;
     const [x, y] = this.local(e);
@@ -123,10 +145,80 @@ export class Input {
   }
 
   pointerUp(e) {
+    if (this.useTouch && e.pointerType === 'touch') return;
     const cur = this.pointers.get(e.pointerId);
     if (cur === undefined) return;
     this.pointers.delete(e.pointerId);
     this.setLane(cur, false, this.stamp(e));
+  }
+
+  // ---- touch: tiap event dicocokkan ulang dengan daftar jari yang masih menempel di layar,
+  // jadi lane tidak bisa "nyangkut" walaupun ada touchend yang hilang.
+
+  touchLocal(t) {
+    const r = this.surface.getBoundingClientRect();
+    return [t.clientX - r.left, t.clientY - r.top];
+  }
+
+  touchStart(e) {
+    e.preventDefault();
+    const t = this.stamp(e);
+    this.reconcile(e, t);
+    for (const touch of e.changedTouches) {
+      const [x, y] = this.touchLocal(touch);
+      const lane = this.highway.laneAt(x, y);
+      if (lane === null) {
+        if (settings.tapHighwayForSuper) this.h.superKey(t);
+        continue;
+      }
+      if (this.touches.has(touch.identifier)) continue;
+      this.touches.set(touch.identifier, lane);
+      this.setLane(lane, true, t);
+      if (settings.hapticTap) tapHaptic();
+    }
+  }
+
+  touchMove(e) {
+    e.preventDefault();
+    const t = this.stamp(e);
+    this.reconcile(e, t);
+    for (const touch of e.changedTouches) {
+      const cur = this.touches.get(touch.identifier);
+      if (cur === undefined) continue;
+      const [x, y] = this.touchLocal(touch);
+      const lane = this.highway.laneAt(x, Math.max(y, this.highway.fretZoneTop));
+      if (lane === null || lane === cur) continue;
+      const frac = this.highway.laneFrac(x);
+      if (frac < 0.18 || frac > 0.82) continue;
+      this.setLane(cur, false, t);
+      this.touches.set(touch.identifier, lane);
+      this.setLane(lane, true, t);
+      if (settings.hapticTap) tapHaptic();
+    }
+  }
+
+  touchEnd(e) {
+    e.preventDefault();
+    const t = this.stamp(e);
+    for (const touch of e.changedTouches) {
+      const cur = this.touches.get(touch.identifier);
+      if (cur === undefined) continue;
+      this.touches.delete(touch.identifier);
+      this.setLane(cur, false, t);
+    }
+    this.reconcile(e, t);
+  }
+
+  // lepaskan jari yang sudah tidak ada di e.touches
+  reconcile(e, t) {
+    if (!this.touches.size) return;
+    const alive = new Set();
+    for (const touch of e.touches) alive.add(touch.identifier);
+    for (const [id, lane] of [...this.touches]) {
+      if (alive.has(id)) continue;
+      this.touches.delete(id);
+      this.setLane(lane, false, t);
+    }
   }
 
   key(e, down) {
