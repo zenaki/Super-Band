@@ -3,6 +3,14 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.6.2] - 2026-11-12
+
+### Changed
+
+- Folder lagu di repo collection memakai nama "Artis - Judul" (misalnya `songs/OKAMOTO'S - HEADHUNT/`), bukan id acak.
+- Pesan commit memakai nama lengkap: `tambah lagu: Artis - Judul`, `ubah lagu: ...`, `hapus lagu: ...`.
+- Collection lama dengan folder id dipindahkan otomatis ke nama baru saat pertama kali dibuka (file tidak di-upload ulang).
+
 ## [1.6.1] - 2026-11-12
 
 ### Fixed

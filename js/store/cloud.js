@@ -126,6 +126,9 @@ export class GitHub {
     for (const ch of changes) {
       if (ch.data === null) {
         tree.push({ path: ch.path, mode: '100644', type: 'blob', sha: null });
+      } else if (ch.sha) {
+        // file yang sudah ada di repo, cukup dipindah tanpa upload ulang
+        tree.push({ path: ch.path, mode: '100644', type: 'blob', sha: ch.sha });
       } else {
         const bytes = typeof ch.data === 'string' ? enc.encode(ch.data) : ch.data;
         if (bytes.length > MAX_FILE) throw new Error(`File ${ch.path.split('/').pop()} lebih dari 95 MB, GitHub tidak menerima file sebesar itu.`);
@@ -148,6 +151,14 @@ export class GitHub {
       await this.req(`/repos/${full}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/main', sha: commit.sha }) });
     }
     if (onProgress) onProgress(1);
+  }
+
+  // semua file di repo: [{ path, sha }]
+  async files(full) {
+    const ref = await this.ref(full);
+    if (!ref) return [];
+    const t = await this.json(`/repos/${full}/git/trees/${ref.tree}?recursive=1`);
+    return t.tree.filter((x) => x.type === 'blob').map((x) => ({ path: x.path, sha: x.sha }));
   }
 
   async ref(full) {
@@ -264,20 +275,52 @@ export const cloud = {
     if (this.index && !force) return this.index;
     const data = await this.client().readJson(this.session.repo, 'songs/index.json');
     this.index = (data && data.songs) || [];
+    if (this.index.some((x) => !x.dir)) await this.migrateDirs();
     return this.index;
   },
 
+  // Collection versi 1.6.x memakai id sebagai nama folder. Pindahkan ke "Artis - Judul".
+  async migrateDirs() {
+    const gh = this.client();
+    const all = await gh.files(this.session.repo);
+    const changes = [];
+    const next = [];
+    for (const s of this.index) {
+      if (s.dir) {
+        next.push(s);
+        continue;
+      }
+      const dir = uniqueDir(songLabel(s.artist, s.title), next.concat(this.index.filter((x) => x.dir)));
+      for (const f of all.filter((x) => x.path.startsWith(`songs/${s.id}/`))) {
+        changes.push({ path: `songs/${dir}/${f.path.slice(`songs/${s.id}/`.length)}`, sha: f.sha });
+        changes.push({ path: f.path, data: null });
+      }
+      next.push({ ...s, dir });
+    }
+    changes.push({ path: 'songs/index.json', data: indexJson(next) });
+    await gh.commit(this.session.repo, 'rapikan nama folder lagu', changes);
+    this.index = next;
+  },
+
+  dirOf(id) {
+    const s = (this.index || []).find((x) => x.id === id);
+    return s && s.dir ? s.dir : id;
+  },
+
   async fetchEntry(id) {
-    return this.client().readJson(this.session.repo, `songs/${id}/entry.json`);
+    await this.fetchIndex();
+    return this.client().readJson(this.session.repo, `songs/${this.dirOf(id)}/entry.json`);
   },
 
   async fetchFile(id, name) {
-    return this.client().read(this.session.repo, `songs/${id}/${name}`);
+    await this.fetchIndex();
+    return this.client().read(this.session.repo, `songs/${this.dirOf(id)}/${name}`);
   },
 
-  summary(entry) {
+  summary(entry, dir) {
     return {
       id: entry.id,
+      dir,
       source: entry.source,
       title: entry.song.meta.title,
       artist: entry.song.meta.artist,
@@ -289,16 +332,19 @@ export const cloud = {
   // files: [{ name, blob }] yang ikut di-upload (null = pakai yang sudah ada di collection)
   async upload(entry, files, onProgress) {
     const index = await this.fetchIndex(true);
+    const existing = index.find((s) => s.id === entry.id);
+    const others = index.filter((s) => s.id !== entry.id);
+    const dir = existing && existing.dir ? existing.dir : uniqueDir(songLabel(entry.song.meta.artist, entry.song.meta.title), others);
     const changes = [];
     const meta = { ...entry };
     delete meta.cloud;
     delete meta.remote;
-    changes.push({ path: `songs/${entry.id}/entry.json`, data: JSON.stringify(meta) });
-    for (const f of files || []) changes.push({ path: `songs/${entry.id}/${f.name}`, data: new Uint8Array(await f.blob.arrayBuffer()) });
-    const next = index.filter((s) => s.id !== entry.id);
-    next.unshift(this.summary(entry));
-    changes.push({ path: 'songs/index.json', data: `${JSON.stringify({ v: 1, songs: next }, null, 1)}\n` });
-    await this.client().commit(this.session.repo, `tambah/ubah lagu: ${entry.song.meta.title}`, changes, onProgress);
+    changes.push({ path: `songs/${dir}/entry.json`, data: JSON.stringify(meta) });
+    for (const f of files || []) changes.push({ path: `songs/${dir}/${f.name}`, data: new Uint8Array(await f.blob.arrayBuffer()) });
+    const next = [this.summary(entry, dir), ...others];
+    changes.push({ path: 'songs/index.json', data: indexJson(next) });
+    const label = songLabel(entry.song.meta.artist, entry.song.meta.title);
+    await this.client().commit(this.session.repo, `${existing ? 'ubah' : 'tambah'} lagu: ${label}`, changes, onProgress);
     this.index = next;
   },
 
@@ -306,11 +352,43 @@ export const cloud = {
     const index = await this.fetchIndex(true);
     const found = index.find((s) => s.id === entry.id);
     if (!found) return;
-    const changes = [{ path: `songs/${entry.id}/entry.json`, data: null }];
-    for (const f of found.files || []) changes.push({ path: `songs/${entry.id}/${f.name}`, data: null });
+    const dir = found.dir || found.id;
+    const changes = [{ path: `songs/${dir}/entry.json`, data: null }];
+    for (const f of found.files || []) changes.push({ path: `songs/${dir}/${f.name}`, data: null });
     const next = index.filter((s) => s.id !== entry.id);
-    changes.push({ path: 'songs/index.json', data: `${JSON.stringify({ v: 1, songs: next }, null, 1)}\n` });
-    await this.client().commit(this.session.repo, `hapus lagu: ${found.title}`, changes);
+    changes.push({ path: 'songs/index.json', data: indexJson(next) });
+    await this.client().commit(this.session.repo, `hapus lagu: ${songLabel(found.artist, found.title)}`, changes);
     this.index = next;
   },
+
 };
+
+// ---------------------------------------------------------------------
+// nama folder di repo collection
+
+export function songLabel(artist, title) {
+  const a = (artist || '').trim();
+  const t = (title || 'Untitled').trim();
+  return a && a.toLowerCase() !== 'unknown' ? `${a} - ${t}` : t;
+}
+
+export function safeDir(label) {
+  const clean = label
+    .replace(/[\\/:*?"<>|#%{}^~[\]`]+/g, ' ')
+    .replace(/[\u0000-\u001f]+/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[.\s]+|[.\s]+$/g, '');
+  return clean.slice(0, 90).trim() || 'Untitled';
+}
+
+function uniqueDir(label, taken) {
+  const used = new Set(taken.map((x) => (x.dir || x.id).toLowerCase()));
+  const base = safeDir(label);
+  let dir = base;
+  for (let n = 2; used.has(dir.toLowerCase()); n++) dir = `${base} (${n})`;
+  return dir;
+}
+
+function indexJson(songs) {
+  return `${JSON.stringify({ v: 2, songs }, null, 1)}\n`;
+}
