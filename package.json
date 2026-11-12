@@ -1,6 +1,6 @@
 {
   "name": "super-band",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "type": "module",
   "description": "Rhythm game 5-fret guitar di browser",

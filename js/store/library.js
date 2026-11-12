@@ -63,9 +63,11 @@ export async function listEntries() {
 
 // ---- sinkron collection pribadi --------------------------------------
 
-function cloudEvent(state, entry, message) {
+const sync = { total: 0, done: 0 };
+
+function cloudEvent(state, entry, message, extra = {}) {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('cloud-sync', { detail: { state, title: entry ? entry.song.meta.title : '', message } }));
+  window.dispatchEvent(new CustomEvent('cloud-sync', { detail: { state, title: entry ? entry.song.meta.title : '', message, total: sync.total, done: sync.done, ...extra } }));
 }
 
 let queue = Promise.resolve();
@@ -73,6 +75,8 @@ let queue = Promise.resolve();
 // Upload lagu ke collection di belakang layar. Hasilnya dikabarkan lewat event 'cloud-sync'.
 export function pushToCloud(entry, files) {
   if (!cloud.loggedIn || entry.source === 'builtin') return Promise.resolve();
+  sync.total++;
+  cloudEvent('queued', entry);
   queue = queue.then(async () => {
     try {
       let list = files;
@@ -88,12 +92,19 @@ export function pushToCloud(entry, files) {
         }
       }
       cloudEvent('start', entry);
-      await cloud.upload(entry, list, (v) => cloudEvent('progress', entry, Math.round(v * 100)));
+      await cloud.upload(entry, list, (v, file) => cloudEvent('progress', entry, Math.round(v * 100), { file }));
       entry.cloud = true;
       await db.put('songs', entry.id, { ...entry, remote: undefined });
+      sync.done++;
       cloudEvent('done', entry);
     } catch (err) {
+      sync.done++;
       cloudEvent('error', entry, `Gagal upload "${entry.song.meta.title}" ke collection: ${err.message}`);
+    }
+    if (sync.done >= sync.total) {
+      cloudEvent('idle', null);
+      sync.total = 0;
+      sync.done = 0;
     }
   });
   return queue;

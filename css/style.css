@@ -302,3 +302,7 @@ select { background: var(--aspal); border: 2px solid var(--garis); border-radius
 }
 
 .cloud-tag { font-weight: 700; color: var(--tosca); }
+.sync { display: grid; gap: 6px; }
+.sync[hidden] { display: none; }
+.sync-label { font-size: 15px; color: var(--kapur); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync .progress { height: 8px; }

@@ -136,8 +136,22 @@ export class GitHub {
         tree.push({ path: ch.path, mode: '100644', type: 'blob', sha: blob.sha });
       }
       done++;
-      if (onProgress) onProgress(done / (changes.length + 1));
+      if (onProgress) onProgress(done / (changes.length + 1), ch.path.split('/').pop());
     }
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.writeCommit(full, message, tree, ref);
+        break;
+      } catch (err) {
+        // ada commit lain yang masuk duluan: ulangi di atas commit terbaru (blob tidak di-upload ulang)
+        if (attempt >= 3 || !(err.status === 422 || err.status === 409)) throw err;
+        ref = await this.ref(full);
+      }
+    }
+    if (onProgress) onProgress(1);
+  }
+
+  async writeCommit(full, message, tree, ref) {
     const body = { tree };
     if (ref) body.base_tree = ref.tree;
     const newTree = await this.json(`/repos/${full}/git/trees`, { method: 'POST', body: JSON.stringify(body) });
@@ -150,7 +164,6 @@ export class GitHub {
     } else {
       await this.req(`/repos/${full}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: 'refs/heads/main', sha: commit.sha }) });
     }
-    if (onProgress) onProgress(1);
   }
 
   // semua file di repo: [{ path, sha }]
@@ -197,6 +210,14 @@ function loadSession() {
   } catch (err) {
     return null;
   }
+}
+
+let writeLock = Promise.resolve();
+// semua perubahan ke repo collection dijalankan satu per satu supaya commit tidak saling tabrak
+function exclusive(fn) {
+  const run = writeLock.then(fn, fn);
+  writeLock = run.catch(() => {});
+  return run;
 }
 
 export const cloud = {
@@ -275,13 +296,16 @@ export const cloud = {
     if (this.index && !force) return this.index;
     const data = await this.client().readJson(this.session.repo, 'songs/index.json');
     this.index = (data && data.songs) || [];
-    if (this.index.some((x) => !x.dir)) await this.migrateDirs();
+    if (this.index.some((x) => !x.dir)) await exclusive(() => this.migrateDirs());
     return this.index;
   },
 
   // Collection versi 1.6.x memakai id sebagai nama folder. Pindahkan ke "Artis - Judul".
   async migrateDirs() {
     const gh = this.client();
+    const fresh = await gh.readJson(this.session.repo, 'songs/index.json');
+    this.index = (fresh && fresh.songs) || [];
+    if (!this.index.some((x) => !x.dir)) return;
     const all = await gh.files(this.session.repo);
     const changes = [];
     const next = [];
@@ -330,7 +354,11 @@ export const cloud = {
   },
 
   // files: [{ name, blob }] yang ikut di-upload (null = pakai yang sudah ada di collection)
-  async upload(entry, files, onProgress) {
+  upload(entry, files, onProgress) {
+    return exclusive(() => this.uploadNow(entry, files, onProgress));
+  },
+
+  async uploadNow(entry, files, onProgress) {
     const index = await this.fetchIndex(true);
     const existing = index.find((s) => s.id === entry.id);
     const others = index.filter((s) => s.id !== entry.id);
@@ -348,7 +376,11 @@ export const cloud = {
     this.index = next;
   },
 
-  async remove(entry) {
+  remove(entry) {
+    return exclusive(() => this.removeNow(entry));
+  },
+
+  async removeNow(entry) {
     const index = await this.fetchIndex(true);
     const found = index.find((s) => s.id === entry.id);
     if (!found) return;

@@ -814,6 +814,7 @@ function cloudPanelHtml() {
   if (cloud.loggedIn) {
     return `<h3>Collection pribadi</h3>
       <p>Login sebagai <b>${esc(cloud.session.username)}</b>. Lagu yang kamu tambahkan tersimpan di repo private <b>${esc(cloud.session.repo)}</b> dan muncul di semua device yang login dengan akun ini.</p>
+      <div id="cloud-sync" class="sync" hidden><div class="sync-label" id="cloud-sync-label"></div><div class="progress"><i id="cloud-sync-bar"></i></div></div>
       <button class="btn" id="cloud-upload-all">Upload lagu lama di device ini ke collection</button>
       <button class="btn btn-quiet" id="cloud-logout">Logout dari device ini</button>
       <div class="status" id="cloud-status"></div>`;
@@ -895,22 +896,44 @@ $('#settings-body').addEventListener('click', async (e) => {
   } else if (id === 'cloud-upload-all') {
     const all = (await listEntries()).filter((x) => x.source !== 'builtin' && !x.cloud);
     if (!all.length) return cloudStatus('Semua lagu di device ini sudah ada di collection.');
-    cloudStatus(`Meng-upload ${all.length} lagu di belakang layar`);
+    cloudStatus('');
     for (const entry of all) pushToCloud(entry, null);
   }
 });
 
+const syncErrors = [];
+
+function showSync(d) {
+  const box = $('#cloud-sync');
+  if (!box) return;
+  if (d.state === 'idle') {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const idx = Math.min(d.total, d.done + 1);
+  const part = d.state === 'progress' ? (d.message || 0) / 100 : 0;
+  const overall = d.total ? (d.done + (d.state === 'done' || d.state === 'error' ? 0 : part)) / d.total : 0;
+  $('#cloud-sync-bar').style.width = `${Math.round(overall * 100)}%`;
+  const file = d.file ? `, ${d.file}` : '';
+  $('#cloud-sync-label').textContent =
+    d.state === 'progress' ? `Upload ${idx} dari ${d.total}: ${d.title}${file} (${d.message}%)` : `Upload ${idx} dari ${d.total}: ${d.title}`;
+}
+
 window.addEventListener('cloud-sync', (e) => {
   const d = e.detail;
-  if (d.state === 'start') toast(`Upload ke collection: ${d.title}`, 2000);
-  else if (d.state === 'progress') cloudStatus(`Upload ${d.title}: ${d.message}%`);
+  showSync(d);
+  if (d.state === 'start' && d.total <= 1) toast(`Upload ke collection: ${d.title}`, 2000);
   else if (d.state === 'done') {
-    toast(`"${d.title}" tersimpan di collection`);
-    cloudStatus(`"${d.title}" tersimpan di collection`);
+    if (d.total <= 1) toast(`"${d.title}" tersimpan di collection`);
     if (app.screen === 'songs') renderSongs(app.selected && app.selected.id);
   } else if (d.state === 'error') {
+    syncErrors.push(d.message);
     toast(d.message, 6000);
-    cloudStatus(d.message, true);
+  } else if (d.state === 'idle') {
+    if (syncErrors.length) cloudStatus(syncErrors.join('\n'), true);
+    else cloudStatus('Semua lagu sudah tersimpan di collection.');
+    syncErrors.length = 0;
   }
 });
 

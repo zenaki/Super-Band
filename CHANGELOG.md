@@ -3,6 +3,16 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.6.3] - 2026-11-12
+
+### Fixed
+
+- Upload gagal dengan "Update is not a fast forward" saat beberapa lagu di-upload bersamaan atau saat folder lama sedang dirapikan. Semua perubahan ke collection sekarang dijalankan satu per satu, dan kalau tetap bertabrakan commit diulang di atas commit terbaru tanpa upload ulang file.
+
+### Added
+
+- Progress bar upload di Settings, Collection pribadi: lagu ke berapa dari berapa, judul, file yang sedang dikirim, dan persentase. Error dikumpulkan dan ditampilkan setelah semua selesai.
+
 ## [1.6.2] - 2026-11-12
 
 ### Changed
