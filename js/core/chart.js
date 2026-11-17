@@ -198,6 +198,13 @@ export function listCharts(song) {
   return out;
 }
 
+// Ringkasan untuk daftar lagu: { guitar: ['easy', ...], bass: [...] }, hanya chart yang ada note-nya
+export function chartsSummary(song) {
+  const out = {};
+  for (const c of listCharts(song)) (out[c.part] = out[c.part] || []).push(c.diff);
+  return out;
+}
+
 export function countGroups(notes) {
   let count = 0;
   let last = -1;

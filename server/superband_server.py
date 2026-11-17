@@ -97,6 +97,41 @@ def save_index(songs):
     write_json('index.json', {'v': 1, 'songs': songs})
 
 
+def index_with_charts():
+    """Index lama belum punya charter/charts: lengkapi sekali dari entry.json lalu simpan."""
+    songs = load_index()
+    changed = False
+    for i, s in enumerate(songs):
+        if 'charts' in s:
+            continue
+        try:
+            entry = read_json_path(os.path.join(SONGS, s['dir'], 'entry.json'))
+        except (OSError, ValueError):
+            continue
+        if not entry:
+            continue
+        fresh = summary(entry, s['dir'])
+        songs[i] = {**s, 'charter': fresh['charter'], 'charts': fresh['charts']}
+        changed = True
+    if changed:
+        save_index(songs)
+    return songs
+
+
+PARTS = ['guitar', 'coop', 'rhythm', 'bass', 'keys']
+DIFFS = ['easy', 'medium', 'hard', 'expert']
+
+
+def charts_summary(song):
+    out = {}
+    parts = song.get('parts') or {}
+    for part in PARTS:
+        diffs = [d for d in DIFFS if ((parts.get(part) or {}).get(d) or {}).get('notes')]
+        if diffs:
+            out[part] = diffs
+    return out
+
+
 def summary(entry, folder):
     meta = entry.get('song', {}).get('meta', {})
     return {
@@ -105,6 +140,8 @@ def summary(entry, folder):
         'source': entry.get('source', 'import'),
         'title': meta.get('title', 'Untitled'),
         'artist': meta.get('artist', 'Unknown'),
+        'charter': meta.get('charter') or '',
+        'charts': charts_summary(entry.get('song', {})),
         'addedAt': entry.get('addedAt', int(time.time() * 1000)),
         'files': entry.get('files', []),
     }
@@ -225,7 +262,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.logout()
             if parts == ['index'] and method == 'GET':
                 with LOCK:
-                    return self.reply(200, {'songs': load_index()})
+                    return self.reply(200, {'songs': index_with_charts()})
             if len(parts) >= 2 and parts[0] == 'songs' and ID_RE.match(parts[1]):
                 return self.song(method, parts[1], parts[2:])
             return self.fail(404, 'tidak ditemukan')

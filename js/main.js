@@ -6,7 +6,7 @@ import { Highway } from './game/highway.js';
 import { Session } from './game/session.js';
 import { missHaptic } from './game/haptics.js';
 import { Engine, Bot, STAR_CUTOFFS } from './core/engine.js';
-import { compileTrack, listCharts, DIFF_LABEL, PART_LABEL, DIFFS } from './core/chart.js';
+import { compileTrack, listCharts, chartsSummary, DIFF_LABEL, PART_LABEL, DIFFS } from './core/chart.js';
 import { formatScore, formatTime, hashString, uid, extOf } from './core/util.js';
 import { settings, saveSettings, resetSettings, getScore, bestStars, submitScore, clearScores, DEFAULTS } from './store/settings.js';
 import { builtins, listEntries, loadAudio, importFiles, saveEntry, deleteEntry, decodeBlob, getArtUrl, titleFromName, pullEntry, pushToCloud, cloud } from './store/library.js';
@@ -119,6 +119,24 @@ function demoFrame() {
 // ---------------------------------------------------------------------
 // pilih lagu
 
+// "chart: heather · Gitar EMHX · Bass", pembeda lagu yang sama dari charter berbeda
+const DIFF_SHORT = { easy: 'E', medium: 'M', hard: 'H', expert: 'X' };
+const PART_SHORT = { guitar: 'Gitar', coop: 'Co-op', rhythm: 'Rhythm', bass: 'Bass', keys: 'Keys' };
+function songInfo(e) {
+  if (e.source === 'builtin') return '';
+  const out = [];
+  const charter = (e.song.meta.charter || '').trim();
+  if (charter && e.source !== 'auto') out.push(`chart: ${charter}`);
+  const charts = e.remote ? e.charts : chartsSummary(e.song);
+  if (charts) {
+    const parts = Object.keys(charts);
+    if (parts.length) {
+      out.push(...parts.map((p) => `${PART_SHORT[p] || p} ${charts[p].map((d) => DIFF_SHORT[d]).join('')}`));
+    }
+  }
+  return out.join(' · ');
+}
+
 async function renderSongs(selectId) {
   app.entries = await listEntries();
   if (selectId) app.selected = app.entries.find((e) => e.id === selectId) || app.selected;
@@ -132,9 +150,10 @@ async function renderSongs(selectId) {
       const best = bestStars(e.id);
       const tag = e.source === 'builtin' ? 'Original' : e.source === 'auto' ? 'Auto-chart' : e.source === 'custom' ? 'Chart sendiri' : 'Import';
       const where = e.remote ? ', belum diunduh' : '';
+      const info = songInfo(e);
       return `<li><button class="song${e === app.selected ? ' is-selected' : ''}" data-id="${esc(e.id)}">
         <span class="cover" style="${coverStyle(e)}" data-cover="${esc(e.id)}">${esc((m.title || '?')[0].toUpperCase())}</span>
-        <span><span class="song-title">${esc(m.title)}</span><br><span class="song-sub">${esc(m.artist)}, ${tag}${e.cloud ? ' <b class="cloud-tag">collection</b>' : ''}${where}</span></span>
+        <span><span class="song-title">${esc(m.title)}</span><br><span class="song-sub">${esc(m.artist)}, ${tag}${e.cloud ? ' <b class="cloud-tag">collection</b>' : ''}${where}</span>${info ? `<br><span class="song-chart">${esc(info)}</span>` : ''}</span>
         <span class="song-stars${best && best.gold ? ' is-gold' : ''}">${best ? '★'.repeat(best.stars) : ''}</span>
       </button></li>`;
     })
@@ -200,7 +219,7 @@ function renderDetail() {
   const best = getScore(e.id, app.part, app.diff);
   const level = e.level ? `Level ${'●'.repeat(e.level)}${'○'.repeat(5 - e.level)}` : '';
   box.innerHTML = `
-    <div class="detail-head"><b>${esc(e.song.meta.title)}</b><span>${formatTime(track.endTime)} ${level}</span></div>
+    <div class="detail-head"><b>${esc(e.song.meta.title)}${e.song.meta.charter && e.source !== 'builtin' ? ` <small class="song-chart">chart: ${esc(e.song.meta.charter)}</small>` : ''}</b><span>${formatTime(track.endTime)} ${level}</span></div>
     ${parts.length > 1 ? `<div class="chips">${parts.map((p) => `<button class="chip${p === app.part ? ' is-on' : ''}" data-part="${p}">${PART_LABEL[p]}</button>`).join('')}</div>` : ''}
     <div class="chips">${DIFFS.filter((d) => diffs.some((c) => c.diff === d))
       .map((d) => `<button class="chip${d === app.diff ? ' is-on' : ''}" data-diff="${d}">${DIFF_LABEL[d]}<small>${diffs.find((c) => c.diff === d).notes}</small></button>`)

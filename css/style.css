@@ -134,6 +134,7 @@ body.dim-stage #stage { opacity: 0.38; }
   font: 400 26px/1 var(--display); color: rgba(0, 0, 0, 0.6); }
 .song-title { font-weight: 700; font-size: 19px; line-height: 1.15; }
 .song-sub { color: var(--redup); font-size: 15px; }
+.song-chart { color: var(--redup); font-size: 13px; opacity: 0.85; font-weight: 400; }
 .song-stars { color: var(--kunyit); font-size: 15px; letter-spacing: 1px; white-space: nowrap; }
 .song-stars.is-gold { color: #fff3b0; text-shadow: 0 0 8px var(--kunyit); }
 .song-detail {

@@ -52,7 +52,7 @@ export async function listEntries() {
         if (e) e.cloud = true;
         else {
           // lagu yang ada di collection tapi belum pernah dibuka di device ini
-          user.push({ id: s.id, source: s.source, addedAt: s.addedAt, files: s.files, cloud: true, remote: true, song: createSong({ title: s.title, artist: s.artist }) });
+          user.push({ id: s.id, source: s.source, addedAt: s.addedAt, files: s.files, cloud: true, remote: true, charts: s.charts, song: createSong({ title: s.title, artist: s.artist, charter: s.charter || '' }) });
         }
       }
     }

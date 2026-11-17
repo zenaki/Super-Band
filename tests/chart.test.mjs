@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TempoMap, compileTrack, listCharts, MOD_FLIP, MOD_HOPO, MOD_STRUM, OPEN } from '../js/core/chart.js';
+import { TempoMap, compileTrack, listCharts, chartsSummary, MOD_FLIP, MOD_HOPO, MOD_STRUM, OPEN } from '../js/core/chart.js';
 import { makeSong, makeTrack } from './helpers.mjs';
 
 test('TempoMap: tick <-> time dengan perubahan tempo', () => {
@@ -82,6 +82,7 @@ test('normalizeSong: duplikat dibuang, open+fret jadi fret saja', () => {
   assert.equal(notes[0].len, 192);
   assert.equal(notes[1].fret, 2);
   assert.deepEqual(listCharts(song), [{ part: 'guitar', diff: 'expert', notes: 2 }]);
+  assert.deepEqual(chartsSummary(song), { guitar: ['expert'] });
 });
 
 test('compileTrack: beat line mengikuti time signature', () => {

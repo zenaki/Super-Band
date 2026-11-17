@@ -3,6 +3,13 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-11-17
+
+### Added
+
+- Daftar lagu menampilkan **charter** dan chart yang tersedia, misalnya `chart: heather · Gitar X · Bass X` atau `chart: SucreMondes · Gitar EMHX` (E/M/H/X = Easy/Medium/Hard/Expert). Lagu yang sama dari charter berbeda jadi mudah dibedakan. Charter juga tampil di panel detail lagu.
+- `songs/index.json` collection menyimpan `charter` dan `charts` per lagu, supaya info ini tampil juga untuk lagu yang belum diunduh. Index lama dilengkapi otomatis oleh server dari `entry.json` saat pertama dibuka; entry dan nama folder tidak berubah.
+
 ## [1.7.1] - 2026-11-17
 
 ### Added

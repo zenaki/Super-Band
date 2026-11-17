@@ -5,6 +5,8 @@
 //   dan disimpan sebagai vault/<username>.json di repo game ini, supaya bisa dibuka dari device mana pun.
 //   Yang tersimpan di repo publik hanya hasil enkripsi; tanpa password token-nya tidak bisa dibaca.
 
+import { chartsSummary } from '../core/chart.js';
+
 export const GAME_REPO = 'zenaki/Super-Band';
 const API = 'https://api.github.com';
 const SESSION_KEY = 'superband.cloud.v1';
@@ -447,6 +449,8 @@ export const cloud = {
       source: entry.source,
       title: entry.song.meta.title,
       artist: entry.song.meta.artist,
+      charter: entry.song.meta.charter || '',
+      charts: chartsSummary(entry.song),
       addedAt: entry.addedAt,
       files: files || entry.files || [],
     };
