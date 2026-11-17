@@ -8,7 +8,8 @@ Perintah:
 
 Konfigurasi lewat environment:
   SB_DATA   folder data            (default /var/lib/super-band)
-  SB_PORT   port, hanya 127.0.0.1  (default 8787)
+  SB_PORT   port                   (default 8787)
+  SB_HOST   alamat bind            (default 127.0.0.1; pakai 0.0.0.0 di dalam container)
   SB_ORIGIN origin tambahan yang boleh mengakses API, dipisah koma (mis. https://zenaki.github.io)
   SB_MAX_MB ukuran maksimum satu file dalam MB (default 300)
 """
@@ -28,6 +29,7 @@ from urllib.parse import unquote
 
 DATA = os.environ.get('SB_DATA', '/var/lib/super-band')
 PORT = int(os.environ.get('SB_PORT', '8787'))
+HOST = os.environ.get('SB_HOST', '127.0.0.1')
 ORIGINS = [o.strip().rstrip('/') for o in os.environ.get('SB_ORIGIN', '').split(',') if o.strip()]
 MAX_BYTES = int(os.environ.get('SB_MAX_MB', '300')) * 1024 * 1024
 SESSION_DAYS = 180
@@ -137,7 +139,8 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write('%s %s\n' % (self.client(), fmt % args))
 
     def client(self):
-        return self.headers.get('X-Real-IP') or self.client_address[0]
+        fwd = (self.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+        return self.headers.get('X-Real-IP') or fwd or self.client_address[0]
 
     # ---- respons
 
@@ -399,9 +402,9 @@ def main():
     if cmd != 'serve':
         sys.exit(__doc__)
     os.makedirs(SONGS, exist_ok=True)
-    httpd = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+    httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     httpd.daemon_threads = True
-    print(f'Super Band collection di 127.0.0.1:{PORT}, data {DATA}', flush=True)
+    print(f'Super Band collection di {HOST}:{PORT}, data {DATA}', flush=True)
     httpd.serve_forever()
 
 

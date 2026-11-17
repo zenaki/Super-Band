@@ -84,6 +84,8 @@ Skrip itu memasang:
 
 Game lalu ada di `https://domain-kamu/super-band/`, dan login collection di Settings langsung memakai server itu. Dari `zenaki.github.io` collection yang sama bisa dipakai dengan mengisi "Alamat server sendiri" saat login.
 
+**VPS dengan Docker + Traefik** (bukan nginx langsung): jangan pakai `install.sh`. Layani repo ini sebagai app static seperti biasa, lalu tambahkan container collection dari `server/Dockerfile` dengan router Traefik `Host(<subdomain game>) && PathPrefix(/api)` ke port 8787 dan volume untuk `/data`. Contoh lengkap ada di `server/compose.example.yml`.
+
 Perintah berguna:
 
 ```bash

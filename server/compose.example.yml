@@ -1,0 +1,30 @@
+# Contoh service untuk stack Docker + Traefik. Sesuaikan nama network, entrypoint, dan certresolver
+# dengan stack kamu. Game statisnya tetap dilayani app static biasa di subdomain yang sama;
+# service ini hanya mengambil path /api.
+services:
+  super-band-collection:
+    build:
+      context: ./src/super-band
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      SB_ORIGIN: https://zenaki.github.io   # origin lain yang boleh memakai collection ini (boleh dikosongkan)
+      SB_MAX_MB: "300"
+    volumes:
+      - super-band-data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.super-band-api.rule=Host(`super-band.example.com`) && PathPrefix(`/api`)
+      - traefik.http.routers.super-band-api.priority=100
+      - traefik.http.routers.super-band-api.entrypoints=websecure
+      - traefik.http.routers.super-band-api.tls=true
+      - traefik.http.services.super-band-api.loadbalancer.server.port=8787
+
+volumes:
+  super-band-data:
+
+# Buat akun (sekali):
+#   docker compose run --rm -it super-band-collection python3 /app/superband_server.py passwd <username>
+# Pindahkan collection dari clone repo GitHub:
+#   docker compose run --rm -v /path/ke/Super-Band-Library:/import:ro super-band-collection \
+#     python3 /app/superband_server.py import-git /import

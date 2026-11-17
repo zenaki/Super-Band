@@ -3,6 +3,17 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] - 2026-11-17
+
+### Added
+
+- `server/Dockerfile` dan `server/compose.example.yml` supaya server collection bisa jalan sebagai container di stack Docker + Traefik (router `/api` di subdomain game).
+- `SB_HOST` untuk alamat bind server (default tetap `127.0.0.1`), dan IP klien dibaca juga dari `X-Forwarded-For`.
+
+### Changed
+
+- `server/install.sh` berhenti kalau port 80/443 sudah dipakai web server lain (Traefik, Caddy, container Docker) dan nginx belum terpasang, supaya tidak bentrok.
+
 ## [1.7.0] - 2026-11-17
 
 ### Added

@@ -14,6 +14,18 @@ set -euo pipefail
 
 [ "$(id -u)" = 0 ] || { echo "Jalankan dengan sudo: sudo bash install.sh"; exit 1; }
 
+# Skrip ini untuk VPS yang memakai nginx langsung. Kalau web server-nya Docker/Traefik/Caddy,
+# memasang nginx bisa bentrok di port 80/443, jadi berhenti dulu.
+if [ "${SB_FORCE:-0}" != 1 ] && ! command -v nginx >/dev/null; then
+  holder=$(ss -ltnpH 'sport = :80 or sport = :443' 2>/dev/null | grep -oE 'users:\(\("[^"]+' | sed 's/.*"//' | sort -u | tr '\n' ' ')
+  if [ -n "$holder" ] || { command -v docker >/dev/null && docker ps --format '{{.Image}}' 2>/dev/null | grep -qiE 'traefik|caddy|nginx'; }; then
+    echo "Port 80/443 di VPS ini sudah dipakai (${holder:-container Docker}) dan nginx belum terpasang."
+    echo "Skrip ini tidak dijalankan supaya tidak bentrok. Untuk stack Docker/Traefik pakai server/Dockerfile"
+    echo "dan server/compose.example.yml (lihat README). Paksa lanjut: SB_FORCE=1 sudo -E bash install.sh"
+    exit 1
+  fi
+fi
+
 REPO="${SB_REPO:-https://github.com/zenaki/Super-Band.git}"
 APP=/opt/super-band/app
 DATA=/var/lib/super-band
