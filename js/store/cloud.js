@@ -232,6 +232,75 @@ export const cloud = {
     return !!(this.session && this.session.token);
   },
 
+  // true kalau collection disimpan di server sendiri (VPS), bukan di repo GitHub
+  get isServer() {
+    return !!(this.session && this.session.kind === 'server');
+  },
+
+  // Cek apakah ada server collection di alamat ini. base kosong = alamat game ini sendiri.
+  async findServer(base = '') {
+    const api = apiBase(base);
+    try {
+      const res = await fetch(`${api}/ping`, { cache: 'no-store' });
+      const data = res.ok ? await res.json() : null;
+      return data && data.app === 'super-band' ? api : null;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  async loginServer(base, username, password) {
+    const api = await this.findServer(base);
+    if (!api) throw new Error('Server collection tidak ditemukan di alamat itu.');
+    const res = await fetch(`${api}/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Login gagal (${res.status}).`);
+    this.saveSession({ kind: 'server', api, username: data.username, token: data.token });
+  },
+
+  async call(path, opts = {}) {
+    const res = await fetch(`${this.session.api}${path}`, {
+      ...opts,
+      headers: { Authorization: `Bearer ${this.session.token}`, ...(opts.headers || {}) },
+      cache: 'no-store',
+    });
+    if (res.status === 401) {
+      this.saveSession(null);
+      throw new Error('Sesi login habis. Login lagi di Settings.');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const e = new Error(data.error || `Server error ${res.status}`);
+      e.status = res.status;
+      throw e;
+    }
+    return res;
+  },
+
+  // upload satu file dengan progress per byte
+  sendFile(path, blob, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `${this.session.api}${path}`);
+      xhr.setRequestHeader('Authorization', `Bearer ${this.session.token}`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress && onProgress(e.loaded / e.total);
+      xhr.onerror = () => reject(new Error('Koneksi ke server terputus saat upload.'));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        let msg = `Server error ${xhr.status}`;
+        try {
+          msg = JSON.parse(xhr.responseText).error || msg;
+        } catch (err) {
+          /* bukan json */
+        }
+        if (xhr.status === 413) msg = 'File terlalu besar untuk server (cek client_max_body_size di nginx dan SB_MAX_MB).';
+        reject(new Error(msg));
+      };
+      xhr.send(blob);
+    });
+  },
+
   client() {
     if (!this.gh || this.gh.token !== this.session.token) this.gh = new GitHub(this.session.token);
     return this.gh;
@@ -249,6 +318,7 @@ export const cloud = {
   },
 
   logout() {
+    if (this.isServer) this.call('/logout', { method: 'POST' }).catch(() => {});
     this.saveSession(null);
   },
 
@@ -297,6 +367,10 @@ export const cloud = {
   async fetchIndex(force = false) {
     if (!this.loggedIn) return [];
     if (this.index && !force) return this.index;
+    if (this.isServer) {
+      this.index = (await (await this.call('/index')).json()).songs || [];
+      return this.index;
+    }
     const data = await this.client().readJson(this.session.repo, 'songs/index.json');
     this.index = (data && data.songs) || [];
     if (this.index.some((x) => !x.dir)) await exclusive(() => this.migrateDirs());
@@ -335,11 +409,20 @@ export const cloud = {
   },
 
   async fetchEntry(id) {
+    if (this.isServer) return (await this.call(`/songs/${id}`)).json();
     await this.fetchIndex();
     return this.client().readJson(this.session.repo, `songs/${this.dirOf(id)}/entry.json`);
   },
 
   async fetchFile(id, name, onProgress) {
+    if (this.isServer) {
+      try {
+        return new Uint8Array(await (await this.call(`/songs/${id}/files/${encodeURIComponent(name)}`)).arrayBuffer());
+      } catch (err) {
+        if (err.status === 404) return null;
+        throw err;
+      }
+    }
     await this.fetchIndex();
     const s = (this.index || []).find((x) => x.id === id);
     const info = s && (s.files || []).find((f) => f.name === name);
@@ -375,6 +458,23 @@ export const cloud = {
   },
 
   async uploadNow(entry, files, onProgress) {
+    if (this.isServer) {
+      const meta = { ...entry };
+      delete meta.cloud;
+      delete meta.remote;
+      await this.call(`/songs/${entry.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
+      const list = files || [];
+      const total = list.reduce((a, f) => a + f.blob.size, 0) || 1;
+      let sent = 0;
+      for (const f of list) {
+        await this.sendFile(`/songs/${entry.id}/files/${encodeURIComponent(f.name)}`, f.blob, (v) => onProgress && onProgress((sent + v * f.blob.size) / total, f.name));
+        sent += f.blob.size;
+      }
+      if (onProgress) onProgress(1);
+      this.index = null;
+      await this.fetchIndex(true);
+      return;
+    }
     const index = await this.fetchIndex(true);
     const existing = index.find((s) => s.id === entry.id);
     const others = index.filter((s) => s.id !== entry.id);
@@ -413,6 +513,11 @@ export const cloud = {
   },
 
   async removeNow(entry) {
+    if (this.isServer) {
+      await this.call(`/songs/${entry.id}`, { method: 'DELETE' });
+      this.index = (this.index || []).filter((x) => x.id !== entry.id);
+      return;
+    }
     const index = await this.fetchIndex(true);
     const found = index.find((s) => s.id === entry.id);
     if (!found) return;
@@ -463,4 +568,12 @@ function indexJson(songs) {
 
 function partPath(path, k) {
   return `${path}.part${String(k + 1).padStart(3, '0')}`;
+}
+
+function apiBase(base) {
+  let b = (base || '').trim();
+  if (!b) return 'api';
+  if (!/^https?:\/\//i.test(b)) b = `https://${b}`;
+  b = b.replace(/\/+$/, '');
+  return /\/api$/.test(b) ? b : `${b}/api`;
 }

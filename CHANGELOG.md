@@ -3,6 +3,20 @@
 Semua perubahan penting di project ini dicatat di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-11-17
+
+### Added
+
+- **Hosting di VPS sendiri**: `server/install.sh` memasang game di VPS Ubuntu (nginx), dengan update otomatis dari branch `main` tiap 2 menit.
+- **Collection di VPS**: `server/superband_server.py`, server kecil tanpa dependency (Python 3 bawaan Ubuntu) untuk login dan penyimpanan lagu. Password disimpan sebagai hash scrypt, sesi login 180 hari, percobaan login dibatasi.
+- Game otomatis memakai server collection kalau dibuka dari VPS. Dari github.io, isi "Alamat server sendiri" di form login.
+- Upload ke server punya progress per byte, dan file besar tidak perlu dipecah.
+- `superband_server.py import-git <folder>` untuk memindahkan collection dari repo GitHub ke VPS.
+
+### Changed
+
+- Collection di repo GitHub private tetap didukung sebagai pilihan kedua.
+
 ## [1.6.4] - 2026-11-12
 
 ### Fixed

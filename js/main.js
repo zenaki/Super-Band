@@ -810,17 +810,22 @@ window.addEventListener('keydown', (e) => {
 
 let cloudMode = 'login';
 
+let ownServer = null; // alamat API kalau game ini di-host bersama server collection
+
 function cloudPanelHtml() {
   if (cloud.loggedIn) {
+    const where = cloud.isServer
+      ? `di server <b>${esc(cloud.session.api.replace(/^https?:\/\//, '').replace(/\/?api$/, '') || location.host)}</b>`
+      : `di repo private <b>${esc(cloud.session.repo)}</b>`;
     return `<h3>Collection pribadi</h3>
-      <p>Login sebagai <b>${esc(cloud.session.username)}</b>. Lagu yang kamu tambahkan tersimpan di repo private <b>${esc(cloud.session.repo)}</b> dan muncul di semua device yang login dengan akun ini.</p>
+      <p>Login sebagai <b>${esc(cloud.session.username)}</b>. Lagu yang kamu tambahkan tersimpan ${where} dan muncul di semua device yang login dengan akun ini.</p>
       <div id="cloud-sync" class="sync" hidden><div class="sync-label" id="cloud-sync-label"></div><div class="progress"><i id="cloud-sync-bar"></i></div></div>
       <button class="btn" id="cloud-upload-all">Upload lagu lama di device ini ke collection</button>
       <button class="btn btn-quiet" id="cloud-logout">Logout dari device ini</button>
       <div class="status" id="cloud-status"></div>`;
   }
   if (cloudMode === 'setup') {
-    return `<h3>Setup collection pribadi</h3>
+    return `<h3>Setup collection di GitHub</h3>
       <p>Cukup sekali di satu device. Siapkan dulu repo GitHub <b>private</b> kosong untuk menyimpan lagu, lalu buat <b>fine-grained token</b> di GitHub, Settings, Developer settings, dengan akses ke repo itu dan ke <b>${esc(GAME_REPO)}</b>, izin <b>Contents: Read and write</b>.</p>
       <form class="ed-form" id="cloud-setup">
         <input type="text" name="repo" placeholder="Repo private, contoh: zenaki/super-band-library" autocomplete="off" required>
@@ -834,15 +839,21 @@ function cloudPanelHtml() {
       <div class="status" id="cloud-status"></div>`;
   }
   return `<h3>Collection pribadi</h3>
-    <p>Login supaya lagu yang kamu tambahkan selalu ada di device mana pun.</p>
+    <p>Login supaya lagu yang kamu tambahkan selalu ada di device mana pun.${ownServer ? ' Collection disimpan di server ini.' : ''}</p>
     <form class="ed-form" id="cloud-login">
       <input type="text" name="username" placeholder="Username" autocomplete="username" required>
       <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+      ${ownServer ? '' : '<input type="text" name="server" placeholder="Alamat server sendiri (kosongkan kalau pakai GitHub)" autocomplete="url" inputmode="url">'}
       <button class="btn btn-primary" type="submit">Login</button>
     </form>
-    <button class="btn btn-quiet" id="cloud-to-setup">Belum punya akun? Setup pertama kali</button>
+    ${ownServer ? '' : '<button class="btn btn-quiet" id="cloud-to-setup">Belum punya akun? Setup di GitHub</button>'}
     <div class="status" id="cloud-status"></div>`;
 }
+
+cloud.findServer('').then((api) => {
+  ownServer = api;
+  if (api && !cloud.loggedIn) refreshCloudPanel();
+});
 
 function refreshCloudPanel(status, error = false) {
   const panel = $('#cloud-panel');
@@ -870,7 +881,9 @@ $('#settings-body').addEventListener('submit', async (e) => {
   try {
     if (e.target.id === 'cloud-login') {
       cloudStatus('Membuka akun');
-      await cloud.login(f.get('username'), f.get('password'));
+      const server = ownServer ? '' : String(f.get('server') || '').trim();
+      if (ownServer || server) await cloud.loginServer(server, f.get('username'), f.get('password'));
+      else await cloud.login(f.get('username'), f.get('password'));
       refreshCloudPanel('Login berhasil. Collection kamu muncul di daftar lagu.');
     } else if (e.target.id === 'cloud-setup') {
       if (f.get('password') !== f.get('password2')) throw new Error('Kedua password tidak sama.');

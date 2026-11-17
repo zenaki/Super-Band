@@ -67,6 +67,34 @@ Di device lain cukup **Login** dengan username dan password itu (aktif 1–2 men
 
 Cara kerjanya: token disimpan terenkripsi dengan password di `vault/<username>.json` di repo ini. Isi file itu publik tapi tidak bisa dibuka tanpa password, jadi pakai password yang panjang dan tidak dipakai di tempat lain. File di atas 8 MB disimpan dalam beberapa potongan. Batas GitHub yang tetap berlaku: sekitar 1–5 GB per repo. Video background di zip Clone Hero tidak di-import.
 
+## Hosting dan collection di VPS sendiri
+
+Alternatif dari GitHub Pages + repo private: game dan collection lagu di VPS Ubuntu sendiri.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zenaki/Super-Band/main/server/install.sh -o install.sh
+sudo bash install.sh
+```
+
+Skrip itu memasang:
+
+- kode game di `/opt/super-band/app`, di-update otomatis dari `main` tiap 2 menit
+- server collection (`superband-collection.service`, hanya di `127.0.0.1:8787`), data di `/var/lib/super-band/songs/<Artis - Judul>/`
+- `/etc/nginx/snippets/super-band.conf`; tambahkan `include snippets/super-band.conf;` di dalam `server { }` domain kamu, lalu `sudo nginx -t && sudo systemctl reload nginx`
+
+Game lalu ada di `https://domain-kamu/super-band/`, dan login collection di Settings langsung memakai server itu. Dari `zenaki.github.io` collection yang sama bisa dipakai dengan mengisi "Alamat server sendiri" saat login.
+
+Perintah berguna:
+
+```bash
+# ganti password / tambah akun
+sudo -u superband SB_DATA=/var/lib/super-band python3 /opt/super-band/app/server/superband_server.py passwd <username>
+# pindahkan collection dari repo GitHub (clone dulu repo library-nya)
+sudo -u superband SB_DATA=/var/lib/super-band python3 /opt/super-band/app/server/superband_server.py import-git /path/ke/Super-Band-Library
+# log
+journalctl -u superband-collection -n 50
+```
+
 ## Development
 
 Project ini murni static: HTML, CSS, dan ES modules.
